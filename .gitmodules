@@ -1,0 +1,12 @@
+[submodule "third_party/lerobot"]
+	path = third_party/lerobot
+	url = https://github.com/huggingface/lerobot.git
+	branch = main
+[submodule "third_party/ros2_rm_robot"]
+	path = third_party/ros2_rm_robot
+	url = https://github.com/RealManRobot/ros2_rm_robot.git
+	branch = humble
+[submodule "third_party/OrbbecSDK_ROS2"]
+	path = third_party/OrbbecSDK_ROS2
+	url = https://github.com/orbbec/OrbbecSDK_ROS2.git
+	branch = v2-main
