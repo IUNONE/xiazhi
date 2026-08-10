@@ -14,6 +14,10 @@ from data_pipeline.data_rerun import (
 )
 
 RerunInputKind = Literal["mcap", "rosbag2", "lerobot"]
+_DEFAULT_ROBOT_XACRO = (
+    Path(__file__).resolve().parents[1]
+    / "third_party/ros2_rm_robot/rm_description/urdf/rm_eco63.urdf.xacro"
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -42,6 +46,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--root", type=Path, default=None, help="lerobot root 目录, 默认使用输入目录")
     parser.add_argument("--batch-size", type=int, default=32, help="lerobot batch_size")
     parser.add_argument("--num-workers", type=int, default=0, help="lerobot num_workers")
+    parser.add_argument(
+        "--camera-name",
+        action="append",
+        default=[],
+        help="MCAP 相机命名空间, 可重复提供. 默认从 metadata.yaml 自动读取",
+    )
+    parser.add_argument(
+        "--no-robot-model",
+        action="store_true",
+        help="MCAP 可视化时不加载仓库中的 ECO63 六维力模型",
+    )
     return parser.parse_args()
 
 
@@ -84,8 +99,17 @@ def _infer_lerobot_repo_id(root: Path) -> str:
     raise ValueError(f"无法从 meta/info.json 读取 repo_id: {info_path}")
 
 
-def _visualize_mcap(path: Path, output_rrd: Path | None) -> None:
-    visualizer = McapRerunVisualizer((path,))
+def _visualize_mcap(
+    path: Path,
+    output_rrd: Path | None,
+    args: argparse.Namespace,
+) -> None:
+    robot_xacro = None if args.no_robot_model else _DEFAULT_ROBOT_XACRO
+    visualizer = McapRerunVisualizer(
+        (path,),
+        robot_xacro=robot_xacro,
+        camera_names=tuple(args.camera_name),
+    )
     if output_rrd is None:
         visualizer.view()
         return
@@ -93,13 +117,17 @@ def _visualize_mcap(path: Path, output_rrd: Path | None) -> None:
     print(result)
 
 
-def _visualize_rosbag2(path: Path, output_rrd: Path | None) -> None:
+def _visualize_rosbag2(
+    path: Path,
+    output_rrd: Path | None,
+    args: argparse.Namespace,
+) -> None:
     with tempfile.TemporaryDirectory(prefix="xiazhi_rerun_") as temp_dir:
         mcap_dir = Path(temp_dir) / "mcap"
         converted = Rosbag2ToMcapConverter(
             McapConversionConfig(input_bag=path, output_bag=mcap_dir)
         ).convert()
-        _visualize_mcap(converted, output_rrd)
+        _visualize_mcap(converted, output_rrd, args)
 
 
 def _visualize_lerobot(
@@ -131,9 +159,9 @@ def main() -> None:
     kind = _detect_input_kind(input_path)
 
     if kind == "mcap":
-        _visualize_mcap(input_path, output_rrd)
+        _visualize_mcap(input_path, output_rrd, args)
     elif kind == "rosbag2":
-        _visualize_rosbag2(input_path, output_rrd)
+        _visualize_rosbag2(input_path, output_rrd, args)
     else:
         _visualize_lerobot(input_path, args, output_rrd)
 

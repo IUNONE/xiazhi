@@ -115,3 +115,40 @@ python scripts/collect_data_lerobot.py --help
 - `--home-tolerance-deg 1.0`：返航后最大关节误差。
 - `--max-camera-age-ms`：允许使用的最大图像陈旧时间。
 - `--camera-width`、`--camera-height`、`--fps`：直采图像和采样规格。
+
+## 9. Rerun 可视化与验收
+
+`scripts/visualize_rerun.py` 对 LeRobotDataset 复用 submodule 中的官方 `visualize_dataset`，显示每路 RGB/depth、`observation.state` 和 `action`。Rerun Blueprint 会将相机画面和数值曲线组织到同一窗口，便于按统一时间轴检查 episode。布局能力参考 [Rerun Blueprint](https://rerun.io/docs/concepts/visualization/blueprints)。
+
+在仓库根目录执行：
+
+```bash
+conda activate xiazhi
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
+python scripts/visualize_rerun.py \
+  /data/lerobot/pick/table_a/session_000001 \
+  --repo-id local/xiazhi_pick \
+  --episode-index 0
+```
+
+目录中的 `meta/info.json` 已包含 `repo_id` 时，可以省略 `--repo-id`。保存 RRD 时，LeRobot 官方 visualizer 接受的是输出目录，并自行生成 episode 文件名：
+
+```bash
+python scripts/visualize_rerun.py \
+  /data/lerobot/pick/table_a/session_000001 \
+  --episode-index 0 \
+  --output-dir /data/review
+```
+
+每个 episode 至少检查：
+
+1. `session_manifest.json` 中 session 和目标 episode 的 `status` 都是 `completed`，相机 serial 与现场设备一致。
+2. 各路 RGB 连续，没有黑帧、冻结或相机名称交换。
+3. depth 的形状为 H×W×1，单位为 mm，没有被当作 RGB 归一化。
+4. `observation.state` 为六关节 rad，轨迹连续且不超关节极限。
+5. `observation.ee_pose` 顺序为 `x y z qw qx qy qz`，`observation.force` 顺序为 `fx fy fz mx my mz`。
+6. `action[t]` 等于下一帧关节状态，episode 帧数比完整 observation 序列少一帧。
+7. 不存在 NaN/Inf、异常 action 跳变或明显的相机/关节错位，返航动作没有进入 episode。
+
+需要比较两条采集链路时，对同一安全小幅度动作分别录制 ROS 2 和 LeRobot，保持相同的 task、scene、fps、相机顺序和深度开关。ROS bag 转换后应使用相同的 feature 名称、维度和单位，并比较关节范围、六维力数量级、实际帧数和图像时间连续性。两次示教和采样时刻不同，不要求逐帧数值完全相同。

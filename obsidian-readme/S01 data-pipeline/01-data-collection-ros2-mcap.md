@@ -318,7 +318,19 @@ ps -ef | rg 'rm_driver|robot_state_publisher|rm_control|move_group|rviz2'
 - MCAP rosbag2 storage。使用 `--storage-id sqlite3` 可改为 DB3；
 - 使用 `--extra-topic /some/topic` 可重复添加其他 topic。
 
-### 3.3 采集模式与流程
+---
+
+交互按键：
+
+- 每次拖动开始前按 `t`：确认操作者已准备完成，程序随后开启拖动示教。按下前机械臂不处于拖动示教状态。
+- 示教中按 `s`：结束示教并保存控制器轨迹，不会创建 rosbag2 episode。
+- 保存轨迹后按 `o`：确认操作者已离开机械臂工作区，允许机械臂主动运动到轨迹起点。
+- 到达起点后按 `r`：确认场景已复位、人员已离开摄像头和工作区，开始回放录包。
+- 到达起点后按 `d`：废弃本次示教，不创建 episode，保留轨迹文件和 manifest 记录用于追溯。
+- 回放中按 `s`：停止回放，当前 rosbag2 保留但 episode 标记为 `failed`。
+- episode 结束后按 `h`：确认返航路径安全后返回 session 初始位姿。
+- 任意等待阶段按 `q` 或 `Ctrl-C`：结束会话。`teach-replay` 不会在异常清理中自动移动机械臂。
+
 
 ```mermaid
 flowchart TD
@@ -352,33 +364,7 @@ flowchart TD
     D5 --> Z
 ```
 
-交互按键：
 
-- 每次拖动开始前按 `t`：确认操作者已准备完成，程序随后开启拖动示教。按下前机械臂不处于拖动示教状态。
-- 示教中按 `s`：结束示教并保存控制器轨迹，不会创建 rosbag2 episode。
-- 保存轨迹后按 `o`：确认操作者已离开机械臂工作区，允许机械臂主动运动到轨迹起点。
-- 到达起点后按 `r`：确认场景已复位、人员已离开摄像头和工作区，开始回放录包。
-- 到达起点后按 `d`：废弃本次示教，不创建 episode，保留轨迹文件和 manifest 记录用于追溯。
-- 回放中按 `s`：停止回放，当前 rosbag2 保留但 episode 标记为 `failed`。
-- episode 结束后按 `h`：确认返航路径安全后返回 session 初始位姿。
-- 任意等待阶段按 `q` 或 `Ctrl-C`：结束会话。`teach-replay` 不会在异常清理中自动移动机械臂。
-
-`q`、`Ctrl-C` 和 `s` 都不是急停。发生碰撞或失控风险时必须使用机械臂实体急停。
-
-RealMan 官方要求拖动示教结束后，机械臂先位于轨迹起点，才能调用轨迹复现接口。`rm_drag_trajectory_origin(1)` 会以控制器设定的 20% 速度运动到起点，`rm_run_drag_trajectory(1)` 阻塞运行轨迹。参考 [RealMan 官方拖动轨迹 API](https://develop.realman-robotics.com/robot/apipython/classes/dragTeach/)。
-
-当前六维力拖动使用 `rm_start_multi_drag_teach()`，该接口没有显式的 `trajectory_record` 参数。因此程序在每次示教结束后强制调用 `rm_save_trajectory()`，并要求轨迹文件实际存在且至少包含 2 个点。程序还会记录本次示教开始和结束的六关节角度：返轨迹起点后必须与本次示教起点一致，回放完成后必须与本次示教终点一致，最大误差不得超过 `--home-tolerance-deg`。若当前控制器或固件没有生成可复现轨迹，或者控制器仍保留旧轨迹，程序会在录包运动前或 episode 完成前报错。
-
-轨迹复现使用后台线程调用 `rm_driver` 的阻塞 ROS service，主线程持续检查 `ros2 bag record` 和键盘停止指令。recorder 异常退出时，程序会立即通过独立 service 请求停止轨迹复现并将 episode 标记为失败。
-
-`connect_state = -2` 表示 SDK 接收失败或超时，`connect_state = -1` 表示 SDK 发送失败。它们连续出现时不是可忽略的普通警告。当前实现从两个方面消除采集程序自身造成的冲突：
-
-1. Python 采集端不再创建第二个 RealMan SDK 客户端，所有控制指令复用 `rm_driver` 内部的唯一 handle。
-2. `rm_driver` 执行轨迹保存、移动到起点和阻塞回放时暂停 TCP 心跳探测，避免同一个 handle 上的长操作被心跳误判为掉线并触发删除、重连。
-
-如果重新编译后仍连续出现 `-2` 或 `-1`，应立即停止主动运动，并检查是否有旧的 `rm_driver`、Web 示教器控制连接或其他 SDK 程序仍占用控制器，同时检查网线、控制器 IP 和端口。只有在日志不再出现连续通信错误且 `/joint_states` 持续更新后，才继续回放录包。
-
-只有明确允许操作者出现在相机数据中时，才使用 `--capture-mode direct`。
 
 ## 4. 数据格式转换
 
@@ -428,3 +414,89 @@ python scripts/convert_rosbag2_to_lerobot.py \
 5. 使用当前 `LeRobotDataset.create/add_frame/save_episode/finalize` 写入。
 
 可使用 `--state-topic`、`--state-field`、`--ee-pose-topic` 和 `--force-topic` 修改默认映射。
+
+## 5. Rerun 可视化与验收
+
+
+```bash
+conda create -n rerun python=3.12 pip -y
+conda activate rerun
+python -m pip install 'rerun-sdk>=0.28,<0.34'
+```
+
+
+```bash
+conda activate rerun
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
+python scripts/visualize_rerun.py \
+  "/home/zhangshenghong/Downloads/clean toilet/yuanzhi28/session_000001/episode_000000"
+```
+
+脚本会在 Viewer 使用期间保持数据流连接，关闭 Rerun 窗口后自动结束。
+
+其余两个 episode 分别执行：
+
+```bash
+python scripts/visualize_rerun.py \
+  "/home/zhangshenghong/Downloads/clean toilet/yuanzhi28/session_000002/episode_000000"
+
+python scripts/visualize_rerun.py \
+  "/home/zhangshenghong/Downloads/clean toilet/yuanzhi28/session_000002/episode_000001"
+```
+
+入口默认生成以下布局：
+
+- 左侧为深色背景的 ECO63 三维视图。
+- 右上按相机排列 RGB 和 depth。
+- 右下显示 `/joint_states` 六关节曲线。
+- 底部展开统一时间轴，Blueprint 和 Selection 面板默认折叠。
+
+如果单独复制了 `.mcap` 文件而没有同目录的 `metadata.yaml`，可重复传入相机名称：
+
+```bash
+python scripts/visualize_rerun.py /data/episode_000000.mcap \
+  --camera-name camera_01 \
+  --camera-name camera_02
+```
+
+不需要机械臂模型时添加 `--no-robot-model`。保存原始 MCAP importer 的 RRD 结果而不打开窗口：
+
+```bash
+python scripts/visualize_rerun.py \
+  "/home/zhangshenghong/Downloads/clean toilet/yuanzhi28/session_000001/episode_000000" \
+  --output-rrd /home/zhangshenghong/Downloads/review/session_000001_episode_000000.rrd
+```
+
+该导出命令等价于调用官方 `rerun mcap convert`，保存的是 MCAP 解码结果。自定义窗口布局和额外加载的 ECO63 URDF 用于交互式查看，不写入这个 RRD。
+
+### 5.3 相机视锥与外参边界
+
+`CameraInfo` 会生成 Rerun Pinhole，因此 Rerun 支持在三维视图中显示相机视锥，也支持让二维图像与三维坐标系联动。参考 [Rerun Transforms 与 Pinhole](https://rerun.io/docs/concepts/logging-and-ingestion/transforms)。
+
+当前三个 bag 中，机械臂 TF 树与每台相机的 TF 树互不连接：
+
+```text
+base_root -> base_link -> Link1 -> ... -> Link6
+
+camera_01_link -> camera_01_depth_frame -> camera_01_color_frame/optical_frame
+camera_02_link -> camera_02_depth_frame -> camera_02_color_frame/optical_frame
+```
+
+因此当前可以正确显示机械臂动画和各路相机画面，但不能正确地把相机视锥放进机械臂三维坐标系。不要人为填写一个看起来合理的外参：
+
+- 固定在工作区的相机需要标定并记录 `base_root -> camera_N_link` 静态 TF，视锥应固定不动。
+- 安装在机械臂末端的相机需要标定并记录 `Link6 -> camera_N_link` 静态 TF，视锥会随 `Link6` 运动。
+
+外参应在后续采集前通过 `/tf_static` 写入 rosbag2。完成外参标定后，无需改动 Rerun 布局，MCAP importer 会自动连接命名坐标系并显示相机视锥。
+
+### 5.4 每个 episode 的验收项
+
+1. `session_manifest.json` 中 session 和目标 episode 的 `status` 都是 `completed`，相机 serial 与现场设备一致。
+2. 各路 RGB 连续，没有黑帧、冻结或相机名称交换。
+3. 各路 depth 单位为 mm，分辨率正确，没有异常整帧空值。
+4. 六关节曲线连续且不超关节极限，机械臂模型运动方向与实际回放一致。
+5. 末端位姿和六维力随动作连续变化，没有明显时间错位。
+6. replay 前后的 pre-roll 和 post-roll 静止段符合命令行设置，操作者没有进入录制画面。
+7. 返轨迹起点、场景复位和返航没有进入 episode。
+8. 不存在异常时间跳变、相机帧长时间冻结或机械臂 TF 中断。

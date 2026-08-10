@@ -15,7 +15,8 @@
 
 - 00-data-collection-lerobot.md
 - 01-data-collection-ros2-mcap.md
-- 02-rerun-visulization.md
+
+Rerun 可视化与采集验收已分别放在 00 和 01 文档末尾。
 
 ## 其他章节
 
