@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "S01 data-pipeline/00-data-collection-lerobot.md",
-                "mode": "source",
+                "file": "S01 data-pipeline/01-data-collection-ros2-mcap.md",
+                "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "00-data-collection-lerobot"
+              "title": "01-data-collection-ros2-mcap"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "S01 data-pipeline/00-data-collection-lerobot.md",
+                "file": "S01 data-pipeline/01-data-collection-ros2-mcap.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "S01 data-pipeline/00-data-collection-lerobot.md",
+                "file": "S01 data-pipeline/01-data-collection-ros2-mcap.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "S01 data-pipeline/00-data-collection-lerobot.md",
+                "file": "S01 data-pipeline/01-data-collection-ros2-mcap.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,8 +190,8 @@
   },
   "active": "e88d9c7f19b54426",
   "lastOpenFiles": [
-    "S01 data-pipeline/01-data-collection-ros2-mcap.md",
     "S01 data-pipeline/00-data-collection-lerobot.md",
+    "S01 data-pipeline/01-data-collection-ros2-mcap.md",
     "S01 data-pipeline/01-mcap-format.md",
     "S01 data-pipeline/00-data-collection.md",
     "S01 data-pipeline/02-rerun-visulization.md"

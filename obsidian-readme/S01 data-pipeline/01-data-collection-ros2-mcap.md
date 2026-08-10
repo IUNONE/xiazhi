@@ -11,44 +11,46 @@
 
 一个 rosbag2 目录对应一个 episode。一次 `collect_data_ros2.py` 命令对应一个 session，并在 session 目录下创建多个独立 rosbag2 episode。
 
-## 2. 初始化 submodule
+## 2. 环境配置
+
+### 2.1 克隆仓库
 
 ```bash
-cd /path/to/XiaZhi-2026
-git submodule sync --recursive
-git submodule update --init --recursive
+export WORKSPACE=~/workspaces/zhangshenghong
+cd "$WORKSPACE"
+git clone --recurse-submodules https://github.com/IUNONE/xiazhi.git
+cd "$WORKSPACE/xiazhi"
 ```
 
-## 3. 官方编译说明页
-
-### 3.1 RealMan
-
-- [本地官方中文 README](../../third_party/ros2_rm_robot/README_CN.md)
-- [官方 Humble 在线 README](https://github.com/RealManRobot/ros2_rm_robot/blob/humble/README_CN.md)
-- [本地 rm_driver 说明](../../third_party/ros2_rm_robot/rm_driver/README_CN.md)
-- [官方 rm_driver 在线说明](https://github.com/RealManRobot/ros2_rm_robot/blob/humble/rm_driver/README_CN.md)
-
-### 3.2 Orbbec
-
-- [本地官方中文 README](../../third_party/OrbbecSDK_ROS2/README_CN.MD)
-- [官方 v2-main 在线 README](https://github.com/orbbec/OrbbecSDK_ROS2/blob/v2-main/README_CN.MD)
-- [官方 OrbbecSDK ROS2 文档](https://orbbec.github.io/OrbbecSDK_ROS2/zh/index.html)
-
-## 4. ROS 2 Humble 环境
-
-运行平台：Ubuntu 22.04 + ROS 2 Humble。
+### 2.2 ROS 2 依赖安装
 
 ```bash
 sudo apt update
 sudo apt install \
-  ros-humble-desktop \
   ros-humble-moveit \
   ros-humble-controller-interface \
   ros-humble-controller-manager-msgs \
   ros-humble-controller-manager \
   ros-humble-rosbag2-storage-mcap \
   python3-colcon-common-extensions \
-  python3-rosdep
+  python3-rosdep \
+  libgflags-dev \
+  nlohmann-json3-dev \
+  ros-humble-image-transport \
+  ros-humble-image-transport-plugins \
+  ros-humble-compressed-image-transport \
+  ros-humble-image-publisher \
+  ros-humble-camera-info-manager \
+  ros-humble-diagnostic-updater \
+  ros-humble-diagnostic-msgs \
+  ros-humble-statistics-msgs \
+  ros-humble-xacro \
+  ros-humble-backward-ros \
+  libdw-dev \
+  libssl-dev \
+  mesa-utils \
+  libgl1 \
+  libgoogle-glog-dev
 ```
 
 安装 RealMan Python SDK：
@@ -57,54 +59,26 @@ sudo apt install \
 /usr/bin/python3 -m pip install --user robotic-arm==1.1.5
 ```
 
-## 5. 编译 RealMan 和 Orbbec
+### 2.3 编译 RealMan 和 Orbbec
 
-### 5.1 准备同一个 colcon workspace
-
-```bash
-mkdir -p ~/xiazhi_ros2_ws/src
-ln -s /path/to/XiaZhi-2026/third_party/ros2_rm_robot \
-  ~/xiazhi_ros2_ws/src/ros2_rm_robot
-ln -s /path/to/XiaZhi-2026/third_party/OrbbecSDK_ROS2 \
-  ~/xiazhi_ros2_ws/src/OrbbecSDK_ROS2
-```
-
-### 5.2 安装 RealMan 本地库
+#### 2.3.1 安装 RealMan 本地库
 
 ```bash
-cd /path/to/XiaZhi-2026/third_party/ros2_rm_robot/rm_driver/lib
+cd "$WORKSPACE/xiazhi/third_party/ros2_rm_robot/rm_driver/lib"
 sudo bash lib_install.sh
 ```
 
 执行前检查 `lib_install.sh`；脚本会写入 `/usr/local/lib`。
 
-### 5.3 安装 Orbbec 构建依赖
+#### 2.3.2 解析依赖并编译
 
 ```bash
 source /opt/ros/humble/setup.bash
+cd "$WORKSPACE/xiazhi"
 
-sudo apt install \
-  libgflags-dev nlohmann-json3-dev \
-  ros-$ROS_DISTRO-image-transport \
-  ros-${ROS_DISTRO}-image-transport-plugins \
-  ros-${ROS_DISTRO}-compressed-image-transport \
-  ros-$ROS_DISTRO-image-publisher \
-  ros-$ROS_DISTRO-camera-info-manager \
-  ros-$ROS_DISTRO-diagnostic-updater \
-  ros-$ROS_DISTRO-diagnostic-msgs \
-  ros-$ROS_DISTRO-statistics-msgs \
-  ros-$ROS_DISTRO-xacro \
-  ros-$ROS_DISTRO-backward-ros \
-  libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev
-```
-
-### 5.4 解析依赖并编译
-
-```bash
-source /opt/ros/humble/setup.bash
-cd ~/xiazhi_ros2_ws
-
-rosdep install --from-paths src --ignore-src -r -y --rosdistro humble
+rosdep install \
+  --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 \
+  --ignore-src -r -y --rosdistro humble
 
 colcon build --packages-select rm_ros_interfaces
 source install/setup.bash
@@ -114,14 +88,15 @@ colcon build \
 ```
 
 ```bash
+export WORKSPACE=~/workspace
 source /opt/ros/humble/setup.bash
-source ~/xiazhi_ros2_ws/install/setup.bash
+source "$WORKSPACE/xiazhi/install/setup.bash"
 ```
 
-### 5.5 安装 Orbbec udev 规则
+#### 2.3.3 安装 Orbbec udev 规则
 
 ```bash
-cd /path/to/XiaZhi-2026/third_party/OrbbecSDK_ROS2/orbbec_camera/scripts
+cd "$WORKSPACE/xiazhi/third_party/OrbbecSDK_ROS2/orbbec_camera/scripts"
 sudo bash install_udev_rules.sh
 sudo udevadm control --reload-rules
 sudo udevadm trigger
@@ -130,20 +105,21 @@ sudo udevadm trigger
 重新插拔相机并检查设备：
 
 ```bash
+export WORKSPACE=~/workspace
 source /opt/ros/humble/setup.bash
-source ~/xiazhi_ros2_ws/install/setup.bash
+source "$WORKSPACE/xiazhi/install/setup.bash"
 ros2 run orbbec_camera list_devices_node
 ```
 
-## 6. RealMan 配置和运行前检查
+### 2.4 RealMan 配置和运行前检查
 
 修改源码中的：
 
 ```text
-third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml
+$WORKSPACE/xiazhi/third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml
 ```
 
-`arm_ip` 和 `tcp_port` 必须与 `--robot-ip`、`--robot-port` 一致。修改后重新编译并 source workspace。
+`arm_ip` 和 `tcp_port` 必须与 `--robot-ip`、`--robot-port` 一致。修改后重新编译并 source `install/setup.bash`。
 
 1. 操作者可立即触及急停，返航路径没有人员和障碍物。
 2. ECO63 控制器无报错，机械臂固定可靠。
@@ -152,12 +128,13 @@ third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml
 5. 输出 session 目录不存在。
 6. 已在当前控制器上验证 ROS driver 与 Python SDK 可以安全并发连接。
 
-## 7. rosbag2/MCAP 采集
+## 3. rosbag2/MCAP 采集
 
 ```bash
+export WORKSPACE=~/workspace
 source /opt/ros/humble/setup.bash
-source ~/xiazhi_ros2_ws/install/setup.bash
-cd /path/to/XiaZhi-2026
+source "$WORKSPACE/xiazhi/install/setup.bash"
+cd "$WORKSPACE/xiazhi"
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 python3 scripts/collect_data_ros2.py \
@@ -182,7 +159,7 @@ python3 scripts/collect_data_ros2.py \
 - MCAP rosbag2 storage。使用 `--storage-id sqlite3` 可改为 DB3；
 - 使用 `--extra-topic /some/topic` 可重复添加其他 topic。
 
-## 8. 多 episode 状态机和输出
+### 3.1 多 episode 状态机
 
 ```text
 启动官方驱动并检查 topic 类型和新鲜消息
@@ -196,6 +173,8 @@ python3 scripts/collect_data_ros2.py \
 
 按 `s` 后返回 READY；下一个 recorder 只在再次按 `r` 后启动。
 
+### 3.2 输出
+
 ```text
 <output-root>/<task>/<scene>/<session-id>/
 ├── session_manifest.json
@@ -206,7 +185,9 @@ python3 scripts/collect_data_ros2.py \
 
 目录存在时立即报错。返航不会进入 bag。
 
-## 9. SQLite3 rosbag2 转 MCAP
+## 4. 数据格式转换
+
+### 4.1 SQLite3 rosbag2 转 MCAP
 
 使用 SQLite3 storage 时执行：
 
@@ -218,7 +199,7 @@ python3 scripts/convert_rosbag2_to_mcap.py \
 
 输入、输出必须是不同目录，输出目录必须不存在。
 
-## 10. MCAP/rosbag2 转 LeRobotDataset
+### 4.2 MCAP/rosbag2 转 LeRobotDataset
 
 输入必须是包含 `metadata.yaml` 的 rosbag2 episode 目录，storage 可以是 `mcap` 或 `sqlite3`。
 
@@ -254,7 +235,3 @@ python scripts/convert_rosbag2_to_lerobot.py \
 5. 使用当前 `LeRobotDataset.create/add_frame/save_episode/finalize` 写入。
 
 可使用 `--state-topic`、`--state-field`、`--ee-pose-topic` 和 `--force-topic` 修改默认映射。
-
-### Python 版本限制
-
-标准 Humble 的 `rosbag2_py` 使用 Python 3.10，当前 LeRobot 要求 Python 3.12。现有转换入口不能直接在标准环境中执行；使用 LeRobot 直采，或准备带 Python 3.12 ROS bindings 的转换环境。

@@ -5,9 +5,8 @@
 在仓库根目录初始化 submodule：
 
 ```bash
-cd /path/to/XiaZhi-2026
-git submodule sync --recursive
-git submodule update --init --recursive
+git clone --recurse-submodules https://github.com/IUNONE/xiazhi.git
+cd xiazhi
 ```
 
 创建并激活 Python 3.12 环境：
