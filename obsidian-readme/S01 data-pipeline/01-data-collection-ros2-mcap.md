@@ -16,8 +16,9 @@
 ### 2.1 克隆仓库
 
 ```bash
-export WORKSPACE=~/workspaces/zhangshenghong
+export WORKSPACE=/home/zhangshenghong
 cd "$WORKSPACE"
+
 git clone --recurse-submodules https://github.com/IUNONE/xiazhi.git
 cd "$WORKSPACE/xiazhi"
 ```
@@ -53,47 +54,151 @@ sudo apt install \
   libgoogle-glog-dev
 ```
 
-安装 RealMan Python SDK：
-
-```bash
-/usr/bin/python3 -m pip install --user robotic-arm==1.1.5
-```
+ROS 2 采集不需要安装 RealMan Python SDK。机械臂控制全部通过 `rm_driver` 提供的 ROS 接口执行，避免 Python SDK 与驱动同时连接控制器。LeRobot 直采使用独立环境和 Python SDK，配置方式见 `00-data-collection-lerobot.md`。
 
 ### 2.3 编译 RealMan 和 Orbbec
 
 #### 2.3.1 安装 RealMan 本地库
 
+进入库目录，并根据当前 CPU 架构确定待安装的 RealMan C++ SDK 动态库：
+
 ```bash
 cd "$WORKSPACE/xiazhi/third_party/ros2_rm_robot/rm_driver/lib"
+uname -m
+
+case "$(uname -m)" in
+  x86_64)
+    export REALMAN_LIB_SOURCE="$PWD/linux_x86_c++_v1.1.5/libapi_cpp.so"
+    ;;
+  aarch64)
+    export REALMAN_LIB_SOURCE="$PWD/linux_arm64_c++_v1.1.5/libapi_cpp.so"
+    ;;
+  *)
+    export REALMAN_LIB_SOURCE=""
+    ;;
+esac
+
+if [[ -z "$REALMAN_LIB_SOURCE" ]]; then
+  echo "当前 CPU 架构不受安装脚本支持: $(uname -m)"
+elif [[ ! -f "$REALMAN_LIB_SOURCE" ]]; then
+  echo "仓库中的待安装库不存在: $REALMAN_LIB_SOURCE"
+elif [[ ! -f /usr/local/lib/libapi_cpp.so ]]; then
+  echo "RealMan 本地库尚未安装"
+elif cmp -s "$REALMAN_LIB_SOURCE" /usr/local/lib/libapi_cpp.so; then
+  echo "RealMan 本地库已安装且与仓库版本一致"
+else
+  echo "RealMan 本地库已安装但与仓库版本不一致"
+  sha256sum "$REALMAN_LIB_SOURCE" /usr/local/lib/libapi_cpp.so
+fi
+```
+
+输出“已安装且与仓库版本一致”时跳过安装。输出“尚未安装”或“版本不一致”时，先检查脚本再安装：
+
+```bash
+sed -n '1,240p' lib_install.sh
 sudo bash lib_install.sh
 ```
 
-执行前检查 `lib_install.sh`；脚本会写入 `/usr/local/lib`。
+`lib_install.sh` 的写入和覆盖范围如下：
 
-#### 2.3.2 解析依赖并编译
+1. 删除已有的 `/usr/local/lib/libapi_cpp.so*` 文件或符号链接。
+2. 根据 `uname -m`，将 `linux_x86_c++_v1.1.5/libapi_cpp.so` 或 `linux_arm64_c++_v1.1.5/libapi_cpp.so` 复制为 `/usr/local/lib/libapi_cpp.so`。
+3. 使用同一架构的库覆盖仓库中的 `third_party/ros2_rm_robot/rm_driver/lib/libapi_cpp.so`。
+4. 当 `/etc/ld.so.conf` 中不包含 `/usr/local/lib` 时，将该路径追加到文件中。
+5. 运行 `/sbin/ldconfig` 更新系统动态库缓存。
+
+安装后再次执行上面的检查命令，必须输出“已安装且与仓库版本一致”。
+
+#### 2.3.2 查看并配置 RealMan 连接参数
+
+按照 RealMan 官方有线连接流程访问 Web 示教器：
+
+1. 将网线一端连接到机械臂控制器的有线网口，另一端连接到电脑的以太网口。
+2. 启动机械臂并等待控制器完成初始化。
+3. 将电脑有线网卡的 IPv4 地址设置到控制器所在网段。控制器使用出厂默认 IP `192.168.1.18` 时，可将电脑设置为 `192.168.1.100`，子网掩码设置为 `255.255.255.0`。电脑地址不允许与控制器地址相同。
+4. 打开浏览器，推荐使用 Chrome，在地址栏输入 `http://192.168.1.18`。若控制器 IP 已修改，将地址替换为修改后的实际 IP。
+5. 登录后进入 IP 模式设置页面，查看页面回显的控制器 IP：
+
+- 第三代控制器：`配置 > 系统配置 > 通讯设置 > IP 模式设置`。
+- 第四代控制器：`配置 > 基础配置 > IP 模式设置`。
+
+参考 [RealMan 官方硬件准备](https://develop.realman-robotics.com/robot4th/quickUseManual/)、[第三代控制器配置](https://develop.realman-robotics.com/robot/teachingPendant/setting/) 和 [第四代控制器配置](https://develop.realman-robotics.com/robot4th/teachingPendantfour/setting/)。
+
+记录当前机械臂的实际连接参数。下面的 IP 仅为出厂默认值，必须按 Web 示教器回显值修改：
 
 ```bash
-source /opt/ros/humble/setup.bash
+export ROBOT_IP=192.168.1.18
+export ROBOT_PORT=8080
+```
+
+查看 RealMan 驱动源码中当前写入的值：
+
+```bash
+export ROBOT_CONFIG="$WORKSPACE/xiazhi/third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml"
+sed -n -E '/^[[:space:]]*(arm_ip|tcp_port):/p' "$ROBOT_CONFIG"
+```
+
+在第一次编译前编辑该文件：
+
+```bash
+vim "$ROBOT_CONFIG"
+```
+
+确保配置值与 `ROBOT_IP` 和 `ROBOT_PORT` 一致：
+
+```yaml
+arm_ip: "192.168.1.18"
+tcp_port: 8080
+```
+
+保存后再次运行查看命令确认。后续采集命令的 `--robot-ip` 和 `--robot-port` 必须使用同一组值。
+
+#### 2.3.3 编译 ros package
+
+```bash
+conda deactivate
+
+# 应输出 `/usr/bin/python3`，版本应为 Python 3.10
+command -v python3
+python3 --version
+```
+
+```bash
+source /opt/ros/humble/setup.zsh
 cd "$WORKSPACE/xiazhi"
+
+if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
+  sudo rosdep init
+fi
+rosdep update --rosdistro humble
 
 rosdep install \
   --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 \
-  --ignore-src -r -y --rosdistro humble
+  --ignore-src -r -y --rosdistro humble \
+  -t build -t buildtool -t build_export
+```
 
-colcon build --packages-select rm_ros_interfaces
-source install/setup.bash
+```
 colcon build \
-  --event-handlers console_direct+ \
+  --base-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 \
+  --packages-select rm_ros_interfaces \
+  --cmake-clean-cache \
   --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.zsh
+
+colcon build \
+  --base-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 \
+  --event-handlers console_direct+ \
+  --cmake-clean-cache \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+source install/setup.zsh
+ros2 interface show rm_ros_interfaces/srv/StartMultiDragTeach
 ```
 
-```bash
-export WORKSPACE=~/workspace
-source /opt/ros/humble/setup.bash
-source "$WORKSPACE/xiazhi/install/setup.bash"
-```
+最后一条命令必须显示 `mode`、`singular_wall` 和 `status` 字段。项目为官方 `rm_driver` 补充了拖动、轨迹保存和回放 service，因此更新代码后必须重新编译 `rm_ros_interfaces` 和 `rm_driver`，不能继续使用旧的 `install/` 结果。
 
-#### 2.3.3 安装 Orbbec udev 规则
+#### 2.3.4 安装 Orbbec udev 规则
 
 ```bash
 cd "$WORKSPACE/xiazhi/third_party/OrbbecSDK_ROS2/orbbec_camera/scripts"
@@ -105,85 +210,175 @@ sudo udevadm trigger
 重新插拔相机并检查设备：
 
 ```bash
-export WORKSPACE=~/workspace
-source /opt/ros/humble/setup.bash
-source "$WORKSPACE/xiazhi/install/setup.bash"
+source /opt/ros/humble/setup.zsh
+source "$WORKSPACE/xiazhi/install/setup.zsh"
 ros2 run orbbec_camera list_devices_node
 ```
 
-### 2.4 RealMan 配置和运行前检查
-
-修改源码中的：
-
-```text
-$WORKSPACE/xiazhi/third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml
-```
-
-`arm_ip` 和 `tcp_port` 必须与 `--robot-ip`、`--robot-port` 一致。修改后重新编译并 source `install/setup.bash`。
+### 2.4 运行前检查
 
 1. 操作者可立即触及急停，返航路径没有人员和障碍物。
 2. ECO63 控制器无报错，机械臂固定可靠。
-3. 三台 Gemini 335 的 serial number 唯一且顺序固定。
-4. `ros2 pkg prefix rm_bringup` 和 `ros2 pkg prefix orbbec_camera` 均成功。
-5. 输出 session 目录不存在。
-6. 已在当前控制器上验证 ROS driver 与 Python SDK 可以安全并发连接。
+3. `rm_eco63_config.yaml` 中的 `arm_ip` 和 `tcp_port` 与采集命令一致。
+4. 至少一台 Gemini 335 的 serial number 已确认。所有 serial number 必须唯一，命令行顺序必须固定。
+5. `ros2 pkg prefix rm_driver`、`ros2 pkg prefix rm_description` 和 `ros2 pkg prefix orbbec_camera` 均成功。
+6. 输出 session 目录不存在。
+7. `ros2 interface show rm_ros_interfaces/srv/StartMultiDragTeach` 能显示新接口。采集程序只复用 `rm_driver` 的一个 SDK 连接，不再启动第二个 Python SDK 客户端。
 
 ## 3. rosbag2/MCAP 采集
 
-```bash
-export WORKSPACE=~/workspace
-source /opt/ros/humble/setup.bash
-source "$WORKSPACE/xiazhi/install/setup.bash"
-cd "$WORKSPACE/xiazhi"
-export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
-
-python3 scripts/collect_data_ros2.py \
-  --output-root /data/raw \
-  --task 'pick the object' \
-  --scene table_a \
-  --session-id session_000001 \
-  --robot-ip 192.168.1.18 \
-  --camera-serial <SN_1> \
-  --camera-serial <SN_2> \
-  --camera-serial <SN_3> \
-  --storage-id mcap \
-  --allow-sdk-driver-coexistence
-```
-
-只有完成 ROS driver 和 Python SDK 并发连接的真机安全验证后，才能使用 `--allow-sdk-driver-coexistence`。
-
-默认录制：
-
-- `/joint_states`、末端位姿、原始/零点六维力、错误状态和 TF；
-- 三台相机的 RGB、depth 和 camera info；
-- MCAP rosbag2 storage。使用 `--storage-id sqlite3` 可改为 DB3；
-- 使用 `--extra-topic /some/topic` 可重复添加其他 topic。
-
-### 3.1 多 episode 状态机
-
-```text
-启动官方驱动并检查 topic 类型和新鲜消息
-  -> 保存 session 初始关节位置
-  -> 开启重力补偿拖动示教
-  -> READY：等待 r / q / Ctrl-C
-  -> r：启动新的 ros2 bag record
-  -> s：停止并保存当前 bag，返航后回到 READY
-  -> q / Ctrl-C：停止并保存当前 bag，返航后结束 session
-```
-
-按 `s` 后返回 READY；下一个 recorder 只在再次按 `r` 后启动。
-
-### 3.2 输出
+### 3.1 输出结构
 
 ```text
 <output-root>/<task>/<scene>/<session-id>/
 ├── session_manifest.json
+├── trajectories/
+│   ├── attempt_000000.txt   # 控制器拖动示教轨迹
+│   └── attempt_000001.txt   # 废弃轨迹也保留并记录状态
 ├── episode_000000/          # 独立 rosbag2 目录
 ├── episode_000001/
 └── ...
 ```
 
-目录存在时立即报错。返航不会进入 bag。
+一个成功或中止的 replay 录包对应一个 episode。示教 attempt 不等于 episode，按 `d` 废弃的示教不会占用 episode 编号。session manifest 记录 capture mode、pre/post-roll、示教点数、轨迹路径、关联 episode 和回放结果。
+
+目录存在时立即报错。示教、返轨迹起点、场景复位和返航都不会进入 bag。
+
+### 3.2 采集命令
+
+将 `ROBOT_IP` 和 `ROBOT_PORT` 设置为 2.3.2 中确认的实际值，不要直接沿用示例值。
+
+```bash
+conda deactivate
+
+export WORKSPACE=/home/zhangshenghong
+export ROBOT_IP=192.168.1.18
+export ROBOT_PORT=8080
+export SN_1=CP0N763000HE
+export SN_2=CP0N7630000A
+source /opt/ros/humble/setup.zsh
+source "$WORKSPACE/xiazhi/install/setup.zsh"
+cd "$WORKSPACE/xiazhi"
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
+python3 scripts/collect_data_ros2.py \
+  --output-root /home/zhangshenghong/Downloads \
+  --task 'clean toilet' \
+  --scene yuanzhi28 \
+  --session-id session_000001 \
+  --robot-ip "$ROBOT_IP" \
+  --robot-port "$ROBOT_PORT" \
+  --init_joints='[0,60,-135,75,90,0]' \
+  --drag-mode 3 \
+  --force-drag-mode precise \
+  --capture-mode teach-replay \
+  --replay-pre-roll-s 1.0 \
+  --replay-post-roll-s 0.5 \
+  --camera-serial "$SN_1" \
+  --camera-serial "$SN_2" \
+  --storage-id mcap
+```
+
+采集程序只启动机械臂最小组合：`rm_driver` 和 `robot_state_publisher`。不会启动 `rm_control`、`move_group` 或 RViz。拖动示教、轨迹保存、轨迹起点运动和轨迹复现均通过 `rm_driver` 新增的 ROS service 执行，并复用驱动内部唯一的 RealMan SDK handle。因此不再需要 `--allow-sdk-driver-coexistence`。
+
+提供 `--init_joints='[0,60,-135,75,90,0]'` 时，程序在 topic 和控制连接检查通过后，以 `--home-return-speed` 指定的速度运动到该六关节角度，再开始拖动示教。参数单位为 degree，必须包含 6 个有限数值。zsh 中必须为方括号值添加引号。后续 episode 返航也返回该位姿。未提供参数时继续使用连接时的当前关节位姿。
+
+启动后可在另一个终端确认进程组成：
+
+```bash
+ps -ef | rg 'rm_driver|robot_state_publisher|rm_control|move_group|rviz2'
+```
+
+正常结果应包含 `rm_driver` 和 `robot_state_publisher`，不应包含本次采集启动的 `rm_control`、`move_group` 或 `rviz2`。如果此前手动启动过其他 RealMan 节点，应先正常结束旧进程，确保只有当前 `rm_driver` 连接机械臂。
+
+`--force-drag-mode` 仅在 `--drag-mode 1`、`2`、`3` 的末端六维力拖动中生效：
+
+- `fast`：快速拖动，手感较轻且响应灵敏，程序默认值。
+- `precise`：精准拖动，手感较沉，较容易控制细微运动。本文采集命令使用该模式。
+
+取值含义来自 [RealMan 官方六维力拖动模式说明](https://develop.realman-robotics.com/robot/apipython/classes/dragTeach/)。
+
+---
+
+`--capture-mode` 有两种取值：
+
+- `teach-replay`：推荐。先记录控制器拖动轨迹，人员退出后由机械臂复现，此时才录制 rosbag2。
+- `direct`：兼容原有流程，人员拖动机械臂时直接录制 rosbag2，默认值。
+
+当前 `teach-replay` 只记录并复现机械臂关节轨迹，不包含夹爪开合动作。
+
+---
+
+`--replay-pre-roll-s` 和 `--replay-post-roll-s` 仅用于 `teach-replay`，分别表示轨迹复现前后继续录包的时间，默认值为 `1.0` 秒和 `0.5` 秒。
+
+默认录制：
+
+- `/joint_states`、末端位姿、原始/零点六维力、错误状态和 TF；
+- 命令行指定的所有相机的 RGB、depth 和 camera info；
+- MCAP rosbag2 storage。使用 `--storage-id sqlite3` 可改为 DB3；
+- 使用 `--extra-topic /some/topic` 可重复添加其他 topic。
+
+### 3.3 采集模式与流程
+
+```mermaid
+flowchart TD
+    A["启动官方驱动并检查 topic"] --> B["运动到 --init_joints 或保存当前关节位置"]
+    B --> C{"--capture-mode"}
+
+    C -->|"teach-replay 推荐"| T0["按 t 确认开始拖动"]
+    T0 --> T1["开启拖动示教"]
+    T1 --> T2["操作者拖动机械臂, 不录包"]
+    T2 -->|"按 s"| T3["停止示教并保存轨迹"]
+    T3 -->|"按 o"| T4["运动到轨迹起点, 不录包"]
+    T4 --> T5["复位场景, 人员退出画面和工作区"]
+    T5 --> T6{"选择下一步"}
+    T6 -->|"按 r"| T7["启动 rosbag2 并等待 pre-roll"]
+    T6 -->|"按 d 废弃"| T0
+    T6 -->|"按 q 结束"| Z["结束 session"]
+    T7 --> T8["复现轨迹"]
+    T8 --> T9["等待 post-roll 并保存 episode"]
+    T9 -->|"按 h"| T10["返回 session 初始位姿"]
+    T9 -->|"按 q"| Z
+    T10 --> T0
+
+    C -->|"direct 兼容模式"| D0["按 t 确认开始拖动"]
+    D0 --> D1["开启拖动示教并等待操作"]
+    D1 -->|"按 r"| D2["启动 rosbag2"]
+    D1 -->|"按 q"| Z
+    D2 --> D3["操作者拖动机械臂, 同时录包"]
+    D3 -->|"按 s"| D4["保存 episode 并自动返航"]
+    D3 -->|"按 q"| D5["保存 episode, 自动返航并结束"]
+    D4 --> D0
+    D5 --> Z
+```
+
+交互按键：
+
+- 每次拖动开始前按 `t`：确认操作者已准备完成，程序随后开启拖动示教。按下前机械臂不处于拖动示教状态。
+- 示教中按 `s`：结束示教并保存控制器轨迹，不会创建 rosbag2 episode。
+- 保存轨迹后按 `o`：确认操作者已离开机械臂工作区，允许机械臂主动运动到轨迹起点。
+- 到达起点后按 `r`：确认场景已复位、人员已离开摄像头和工作区，开始回放录包。
+- 到达起点后按 `d`：废弃本次示教，不创建 episode，保留轨迹文件和 manifest 记录用于追溯。
+- 回放中按 `s`：停止回放，当前 rosbag2 保留但 episode 标记为 `failed`。
+- episode 结束后按 `h`：确认返航路径安全后返回 session 初始位姿。
+- 任意等待阶段按 `q` 或 `Ctrl-C`：结束会话。`teach-replay` 不会在异常清理中自动移动机械臂。
+
+`q`、`Ctrl-C` 和 `s` 都不是急停。发生碰撞或失控风险时必须使用机械臂实体急停。
+
+RealMan 官方要求拖动示教结束后，机械臂先位于轨迹起点，才能调用轨迹复现接口。`rm_drag_trajectory_origin(1)` 会以控制器设定的 20% 速度运动到起点，`rm_run_drag_trajectory(1)` 阻塞运行轨迹。参考 [RealMan 官方拖动轨迹 API](https://develop.realman-robotics.com/robot/apipython/classes/dragTeach/)。
+
+当前六维力拖动使用 `rm_start_multi_drag_teach()`，该接口没有显式的 `trajectory_record` 参数。因此程序在每次示教结束后强制调用 `rm_save_trajectory()`，并要求轨迹文件实际存在且至少包含 2 个点。程序还会记录本次示教开始和结束的六关节角度：返轨迹起点后必须与本次示教起点一致，回放完成后必须与本次示教终点一致，最大误差不得超过 `--home-tolerance-deg`。若当前控制器或固件没有生成可复现轨迹，或者控制器仍保留旧轨迹，程序会在录包运动前或 episode 完成前报错。
+
+轨迹复现使用后台线程调用 `rm_driver` 的阻塞 ROS service，主线程持续检查 `ros2 bag record` 和键盘停止指令。recorder 异常退出时，程序会立即通过独立 service 请求停止轨迹复现并将 episode 标记为失败。
+
+`connect_state = -2` 表示 SDK 接收失败或超时，`connect_state = -1` 表示 SDK 发送失败。它们连续出现时不是可忽略的普通警告。当前实现从两个方面消除采集程序自身造成的冲突：
+
+1. Python 采集端不再创建第二个 RealMan SDK 客户端，所有控制指令复用 `rm_driver` 内部的唯一 handle。
+2. `rm_driver` 执行轨迹保存、移动到起点和阻塞回放时暂停 TCP 心跳探测，避免同一个 handle 上的长操作被心跳误判为掉线并触发删除、重连。
+
+如果重新编译后仍连续出现 `-2` 或 `-1`，应立即停止主动运动，并检查是否有旧的 `rm_driver`、Web 示教器控制连接或其他 SDK 程序仍占用控制器，同时检查网线、控制器 IP 和端口。只有在日志不再出现连续通信错误且 `/joint_states` 持续更新后，才继续回放录包。
+
+只有明确允许操作者出现在相机数据中时，才使用 `--capture-mode direct`。
 
 ## 4. 数据格式转换
 
@@ -203,7 +398,7 @@ python3 scripts/convert_rosbag2_to_mcap.py \
 
 输入必须是包含 `metadata.yaml` 的 rosbag2 episode 目录，storage 可以是 `mcap` 或 `sqlite3`。
 
-三路 RGB 必须显式映射，depth 可选：
+至少一路 RGB 必须显式映射，depth 可选。`--image-topic` 和 `--depth-topic` 应按实际录制的相机数量重复提供：
 
 ```bash
 python scripts/convert_rosbag2_to_lerobot.py \
@@ -214,10 +409,8 @@ python scripts/convert_rosbag2_to_lerobot.py \
   --fps 30 \
   --image-topic camera_01=/camera_01/color/image_raw \
   --image-topic camera_02=/camera_02/color/image_raw \
-  --image-topic camera_03=/camera_03/color/image_raw \
   --depth-topic camera_01_depth=/camera_01/depth/image_raw \
-  --depth-topic camera_02_depth=/camera_02/depth/image_raw \
-  --depth-topic camera_03_depth=/camera_03/depth/image_raw
+  --depth-topic camera_02_depth=/camera_02/depth/image_raw
 ```
 
 默认数值来源：

@@ -21,7 +21,7 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 1. 操作者在机械臂旁，急停可立即触及，返航路径无人员和障碍物。
 2. ECO63 是一体化六维力版本，控制器无报错。
-3. 三台 Gemini 335 的 serial number 已确定，并固定对应 `camera_01`、`camera_02`、`camera_03`。
+3. 至少一台 Gemini 335 的 serial number 已确定。所有 serial number 必须唯一，命令行顺序必须固定。
 4. 输出 session 目录不存在；脚本不会覆盖或自动删除旧数据。
 5. 在交互式 TTY 中运行。管道、后台任务和无终端环境不会自动开始录制。
 
@@ -45,12 +45,14 @@ python scripts/collect_data_lerobot.py \
   --fps 30
 ```
 
-默认写入三路 RGB 和三路 uint16 毫米深度视频。使用 `--no-depth` 可以关闭深度，使用 `--no-videos` 可以改为逐帧图像。
+`--camera-serial` 必须至少提供一次，可按实际相机数量重复提供。参数按命令行顺序映射为 `camera_01`、`camera_02` 等，因此不同 session 应保持相同顺序。
+
+默认写入命令行指定的所有相机的 RGB 和 uint16 毫米深度视频。使用 `--no-depth` 可以关闭深度，使用 `--no-videos` 可以改为逐帧图像。
 
 ## 4. 按键
 
 ```text
-连接机械臂和三台相机
+连接机械臂和命令行指定的相机
   -> 检查状态和新鲜 RGB-D 图像
   -> 保存 session 初始关节位置
   -> 开启重力补偿拖动示教
@@ -86,8 +88,8 @@ episode 索引依次为 `0, 1, ...`。`session_manifest.json` 记录设备配置
 | `observation.state` | 6 | 关节位置，rad |
 | `observation.ee_pose` | 7 | `x y z qw qx qy qz`，m + quaternion |
 | `observation.force` | 6 | `fx fy fz mx my mz`，N + Nm |
-| `observation.images.camera_01..03` | H×W×3 | RGB uint8 |
-| `observation.images.camera_01_depth..03_depth` | H×W×1 | depth uint16，mm |
+| `observation.images.camera_01..NN` | H×W×3 | RGB uint8，NN 为相机数量 |
+| `observation.images.camera_01_depth..NN_depth` | H×W×1 | depth uint16，mm，NN 为相机数量 |
 | `action` | 6 | 下一采样时刻的绝对关节目标，rad |
 
 ```text

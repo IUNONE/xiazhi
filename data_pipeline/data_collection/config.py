@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,22 +26,32 @@ CAMERA_TOPIC_SUFFIXES = (
 
 @dataclass(frozen=True, slots=True)
 class RealManConfig:
-    """RealMan ECO63 direct-SDK connection and drag-teach settings."""
+    """保存 RealMan ECO63 连接和拖动示教配置。"""
 
     ip: str = "192.168.1.18"
     port: int = 8080
+    init_joints_deg: tuple[float, ...] | None = None
     drag_mode: int = 3
+    force_drag_mode: str = "fast"
     singular_wall: bool = True
     home_return_speed: int = 10
     home_tolerance_deg: float = 1.0
 
     def validate(self) -> None:
+        """校验机械臂连接和运动参数。"""
         if not self.ip:
             raise ValueError("robot ip 不允许为空")
         if not 1 <= self.port <= 65535:
             raise ValueError("robot port 必须在 1 到 65535")
+        if self.init_joints_deg is not None:
+            if len(self.init_joints_deg) != 6:
+                raise ValueError("init_joints 必须包含 6 个关节角度")
+            if not all(math.isfinite(value) for value in self.init_joints_deg):
+                raise ValueError("init_joints 必须全部是有限数值")
         if self.drag_mode not in {0, 1, 2, 3}:
             raise ValueError("drag_mode 必须是 0, 1, 2 或 3")
+        if self.force_drag_mode not in {"fast", "precise"}:
+            raise ValueError("force_drag_mode 必须是 fast 或 precise")
         if not 1 <= self.home_return_speed <= 100:
             raise ValueError("home_return_speed 必须在 1 到 100")
         if self.home_tolerance_deg <= 0:
@@ -97,16 +108,18 @@ class CollectionConfig:
     startup_timeout_s: float = 45.0
     sample_timeout_s: float = 5.0
     fps: int = 30
-    allow_sdk_driver_coexistence: bool = False
+    capture_mode: str = "direct"
+    replay_pre_roll_s: float = 1.0
+    replay_post_roll_s: float = 0.5
 
     def validate(self) -> None:
-        if len(self.cameras) != 3:
-            raise ValueError("cameras 必须包含三台 Gemini 335")
+        if not self.cameras:
+            raise ValueError("cameras 必须至少包含一台 Gemini 335")
         for camera in self.cameras:
             camera.validate()
-        if len({camera.name for camera in self.cameras}) != 3:
+        if len({camera.name for camera in self.cameras}) != len(self.cameras):
             raise ValueError("camera name 必须唯一")
-        if len({camera.serial_number for camera in self.cameras}) != 3:
+        if len({camera.serial_number for camera in self.cameras}) != len(self.cameras):
             raise ValueError("camera serial_number 必须唯一")
         if self.storage_id not in {"sqlite3", "mcap"}:
             raise ValueError("storage_id 仅支持 sqlite3 或 mcap")
@@ -114,6 +127,14 @@ class CollectionConfig:
             raise ValueError("startup_timeout_s 和 sample_timeout_s 必须大于 0")
         if self.fps <= 0:
             raise ValueError("fps 必须大于 0")
+        if self.capture_mode not in {"direct", "teach-replay"}:
+            raise ValueError("capture_mode 必须是 direct 或 teach-replay")
+        if not math.isfinite(self.replay_pre_roll_s) or not math.isfinite(
+            self.replay_post_roll_s
+        ):
+            raise ValueError("replay_pre_roll_s 和 replay_post_roll_s 必须是有限数值")
+        if self.replay_pre_roll_s < 0 or self.replay_post_roll_s < 0:
+            raise ValueError("replay_pre_roll_s 和 replay_post_roll_s 不允许为负数")
         self.robot.validate()
         for value_name, value in (
             ("task", self.task),
@@ -133,6 +154,12 @@ class CollectionConfig:
         if episode_index < 0:
             raise ValueError("episode_index 不允许为负数")
         return self.output_path() / f"episode_{episode_index:06d}"
+
+    def trajectory_output_path(self, attempt_index: int) -> Path:
+        """生成一次示教尝试的控制器轨迹保存路径。"""
+        if attempt_index < 0:
+            raise ValueError("attempt_index 不允许为负数")
+        return self.output_path() / "trajectories" / f"attempt_{attempt_index:06d}.txt"
 
     def topics(self) -> tuple[str, ...]:
         camera_topics = tuple(topic for camera in self.cameras for topic in camera.topics())

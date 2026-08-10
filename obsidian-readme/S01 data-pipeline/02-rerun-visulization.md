@@ -35,9 +35,9 @@ python scripts/visualize_rerun.py INPUT --output-rrd /data/review/episode_000001
 
 采集完成后同时检查 `session_manifest.json` 中对应的 episode 记录和可视化结果：
 
-1. session 和目标 episode 的 `status` 都是 `completed`，三个 camera serial 与现场设备一致。
-2. 三路 RGB 均连续，没有黑帧、冻结或相机名称交换。
-3. 开启 depth 时三路深度单位为 mm，形状为 H×W×1，没有被当作 RGB 归一化。
+1. session 和目标 episode 的 `status` 都是 `completed`，manifest 中的所有 camera serial 与现场设备一致。
+2. 命令行指定的各路 RGB 均连续，没有黑帧、冻结或相机名称交换。
+3. 开启 depth 时各路深度单位为 mm，形状为 H×W×1，没有被当作 RGB 归一化。
 4. `observation.state` 为六关节 rad；轨迹连续且不超关节极限。
 5. `observation.ee_pose` 四元数顺序为 `qw qx qy qz`。
 6. `observation.force` 顺序为 `fx fy fz mx my mz`。

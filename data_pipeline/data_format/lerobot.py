@@ -62,8 +62,8 @@ class LeRobotConversionConfig:
         if not self.repo_id or "/" not in self.repo_id:
             raise ValueError("repo_id 必须使用 namespace/name 格式")
         rgb_topics = [item for item in self.image_topics if not item.is_depth]
-        if len(rgb_topics) != 3:
-            raise ValueError("必须配置 camera_01, camera_02, camera_03 三路 RGB topic")
+        if not rgb_topics:
+            raise ValueError("必须至少配置一路 RGB topic")
         if len({item.name for item in self.image_topics}) != len(self.image_topics):
             raise ValueError("LeRobot 图像 feature name 必须唯一")
         if len({item.topic for item in self.image_topics}) != len(self.image_topics):

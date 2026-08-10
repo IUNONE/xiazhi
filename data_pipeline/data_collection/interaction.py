@@ -8,7 +8,7 @@ from types import TracebackType
 
 
 class TerminalKeyReader:
-    """Read single-key recording commands from an interactive POSIX terminal."""
+    """读取 POSIX 交互终端中的单键采集指令。"""
 
     def __init__(self) -> None:
         self._fd: int | None = None
@@ -46,9 +46,23 @@ class TerminalKeyReader:
             raise KeyboardInterrupt
         return key
 
-    def wait_for_episode_start(self) -> str:
+    def wait_for_drag_start(self, stage: str) -> str:
+        """等待操作者确认后开启拖动示教。"""
         print(
-            "拖动示教已开启。按 r 开始新 episode；按 q 或 Ctrl-C 结束会话。",
+            f"{stage} 已准备。按 t 开启拖动示教并开始拖动；"
+            "按 q 或 Ctrl-C 结束会话。",
+            flush=True,
+        )
+        while True:
+            key = self.read()
+            if key in {"t", "q"}:
+                return key
+
+    def wait_for_episode_start(self) -> str:
+        """等待操作者开始录制 direct episode。"""
+        print(
+            "拖动示教已开启。按 r 开始录制新 episode；"
+            "按 q 或 Ctrl-C 结束会话。",
             flush=True,
         )
         while True:
@@ -59,3 +73,53 @@ class TerminalKeyReader:
     def recording_command(self, timeout_s: float = 0.0) -> str | None:
         key = self.read(timeout_s)
         return key if key in {"s", "q"} else None
+
+    def wait_for_teaching_finish(self, attempt_index: int) -> str:
+        """等待操作者结束当前拖动示教。"""
+        print(
+            f"示教 attempt {attempt_index:06d} 正在记录控制器轨迹，不录制 rosbag2。"
+            "按 s 完成示教；按 q 或 Ctrl-C 结束会话。",
+            flush=True,
+        )
+        while True:
+            key = self.read()
+            if key in {"s", "q"}:
+                return key
+
+    def wait_for_origin_command(self) -> str:
+        """等待操作者确认工作区无人后返回示教起点。"""
+        print(
+            "示教轨迹已保存。移除操作者和障碍物后，按 o 运动到轨迹起点；"
+            "按 q 或 Ctrl-C 结束会话且不自动运动。",
+            flush=True,
+        )
+        while True:
+            key = self.read()
+            if key in {"o", "q"}:
+                return key
+
+    def wait_for_replay_command(self) -> str:
+        """等待场景复位完成后开始回放录制或废弃示教。"""
+        print(
+            "机械臂已到达轨迹起点。复位场景并退出摄像头和工作区后，"
+            "按 r 回放并录制 rosbag2；按 d 废弃本次示教；"
+            "按 q 或 Ctrl-C 结束会话。",
+            flush=True,
+        )
+        while True:
+            key = self.read()
+            if key in {"r", "d", "q"}:
+                return key
+
+    def wait_for_home_command(self) -> str:
+        """等待操作者确认后返回 session 初始位姿。"""
+        print(
+            "episode 已结束。确认返航路径无人且无障碍物后，"
+            "按 h 返回 session 初始位姿并继续；"
+            "按 q 或 Ctrl-C 在当前位姿结束会话。",
+            flush=True,
+        )
+        while True:
+            key = self.read()
+            if key in {"h", "q"}:
+                return key

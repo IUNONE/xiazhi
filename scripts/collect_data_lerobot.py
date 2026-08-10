@@ -21,7 +21,12 @@ def main() -> None:
     parser.add_argument("--task", required=True)
     parser.add_argument("--scene", required=True)
     parser.add_argument("--session-id", default=None)
-    parser.add_argument("--camera-serial", action="append", required=True)
+    parser.add_argument(
+        "--camera-serial",
+        action="append",
+        required=True,
+        help="至少提供一次，可重复提供；按顺序映射为 camera_01、camera_02 等",
+    )
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=480)
@@ -35,9 +40,6 @@ def main() -> None:
     parser.add_argument("--max-camera-age-ms", type=int, default=500)
     parser.add_argument("--no-videos", action="store_true")
     args = parser.parse_args()
-
-    if len(args.camera_serial) != 3:
-        parser.error("--camera-serial 必须提供三次")
 
     cameras = tuple(
         CameraConfig(

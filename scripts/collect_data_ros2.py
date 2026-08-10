@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import uuid
 from pathlib import Path
 
@@ -12,7 +13,25 @@ from data_pipeline.data_collection import (
 )
 
 
+def parse_init_joints(value: str) -> tuple[float, ...]:
+    """解析包含六个角度值的初始关节参数。"""
+    normalized = value.strip()
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    parts = [part.strip() for part in normalized.split(",")]
+    if len(parts) != 6 or any(not part for part in parts):
+        raise argparse.ArgumentTypeError("init_joints 必须包含 6 个逗号分隔的角度")
+    try:
+        joints = tuple(float(part) for part in parts)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("init_joints 包含非数值内容") from exc
+    if not all(math.isfinite(joint) for joint in joints):
+        raise argparse.ArgumentTypeError("init_joints 必须全部是有限数值")
+    return joints
+
+
 def main() -> None:
+    """解析 ROS 2 采集参数并执行一个 session。"""
     parser = argparse.ArgumentParser(
         description="Record an ECO63 multi-episode session with ROS 2 rosbag2"
     )
@@ -20,14 +39,33 @@ def main() -> None:
     parser.add_argument("--task", required=True)
     parser.add_argument("--scene", required=True)
     parser.add_argument("--session-id", default=None)
-    parser.add_argument("--camera-serial", action="append", required=True)
+    parser.add_argument(
+        "--camera-serial",
+        action="append",
+        required=True,
+        help="至少提供一次，可重复提供；按顺序映射为 camera_01、camera_02 等",
+    )
     parser.add_argument("--camera-fps", type=int, default=30)
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=480)
     parser.add_argument("--no-depth", action="store_true")
     parser.add_argument("--robot-ip", required=True)
     parser.add_argument("--robot-port", type=int, default=8080)
+    parser.add_argument(
+        "--init-joints",
+        "--init_joints",
+        dest="init_joints",
+        type=parse_init_joints,
+        default=None,
+        help="采集开始时的六关节角度, zsh 示例 '[0,60,-135,75,90,0]'",
+    )
     parser.add_argument("--drag-mode", type=int, choices=[0, 1, 2, 3], default=3)
+    parser.add_argument(
+        "--force-drag-mode",
+        choices=["fast", "precise"],
+        default="fast",
+        help="六维力拖动轻重模式，仅在 --drag-mode 1、2、3 时生效",
+    )
     parser.add_argument("--disable-singular-wall", action="store_true")
     parser.add_argument("--home-return-speed", type=int, default=10)
     parser.add_argument("--home-tolerance-deg", type=float, default=1.0)
@@ -36,21 +74,14 @@ def main() -> None:
     parser.add_argument("--startup-timeout-s", type=float, default=45.0)
     parser.add_argument("--sample-timeout-s", type=float, default=5.0)
     parser.add_argument(
-        "--allow-sdk-driver-coexistence",
-        action="store_true",
-        help=(
-            "确认本机已验证 RealMan ROS driver 与 Python SDK 可安全并发连接；"
-            "未提供时拒绝启动"
-        ),
+        "--capture-mode",
+        choices=["direct", "teach-replay"],
+        default="direct",
+        help="direct 边拖动边录包，teach-replay 先示教再回放录包",
     )
+    parser.add_argument("--replay-pre-roll-s", type=float, default=1.0)
+    parser.add_argument("--replay-post-roll-s", type=float, default=0.5)
     args = parser.parse_args()
-
-    if len(args.camera_serial) != 3:
-        parser.error("--camera-serial 必须提供三次")
-    if not args.allow_sdk_driver_coexistence:
-        parser.error(
-            "必须先完成并发连接真机验证，再提供 --allow-sdk-driver-coexistence"
-        )
 
     cameras = tuple(
         CameraConfig(
@@ -66,7 +97,9 @@ def main() -> None:
     robot = RealManConfig(
         ip=args.robot_ip,
         port=args.robot_port,
+        init_joints_deg=args.init_joints,
         drag_mode=args.drag_mode,
+        force_drag_mode=args.force_drag_mode,
         singular_wall=not args.disable_singular_wall,
         home_return_speed=args.home_return_speed,
         home_tolerance_deg=args.home_tolerance_deg,
@@ -83,7 +116,9 @@ def main() -> None:
         startup_timeout_s=args.startup_timeout_s,
         sample_timeout_s=args.sample_timeout_s,
         fps=args.camera_fps,
-        allow_sdk_driver_coexistence=args.allow_sdk_driver_coexistence,
+        capture_mode=args.capture_mode,
+        replay_pre_roll_s=args.replay_pre_roll_s,
+        replay_post_roll_s=args.replay_post_roll_s,
     )
     print(Rosbag2Collector(config).collect())
 

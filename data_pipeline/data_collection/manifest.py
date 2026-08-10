@@ -46,11 +46,14 @@ class SessionManifest:
     stop_reason: str | None = None
     error: str | None = None
     episodes: list[dict[str, Any]] = field(default_factory=list)
+    teaching_attempts: list[dict[str, Any]] = field(default_factory=list)
     action: dict[str, Any] = field(default_factory=dict)
+    collection: dict[str, Any] = field(default_factory=dict)
     software: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, config: CollectionConfig, backend: str) -> SessionManifest:
+        """根据采集配置创建 session manifest。"""
         repository_root = Path(__file__).resolve().parents[2]
         software = {
             "python": platform.python_version(),
@@ -83,14 +86,71 @@ class SessionManifest:
                 "model": "RealMan ECO63 6FB",
                 "ip": config.robot.ip,
                 "port": config.robot.port,
+                "init_joints_deg": config.robot.init_joints_deg,
                 "drag_mode": config.robot.drag_mode,
+                "force_drag_mode": config.robot.force_drag_mode,
                 "singular_wall": config.robot.singular_wall,
             },
             cameras=[asdict(camera) for camera in config.cameras],
             output_path=str(config.output_path()),
             action=action,
+            collection={
+                "capture_mode": config.capture_mode,
+                "replay_pre_roll_s": config.replay_pre_roll_s,
+                "replay_post_roll_s": config.replay_post_roll_s,
+            },
             software=software,
         )
+
+    def start_teaching_attempt(
+        self,
+        attempt_index: int,
+        trajectory_path: Path,
+    ) -> dict[str, Any]:
+        """登记一次不录制 rosbag2 的拖动示教尝试。"""
+        attempt = {
+            "attempt_index": attempt_index,
+            "trajectory_path": str(trajectory_path),
+            "started_at": _utc_now(),
+            "teaching_finished_at": None,
+            "finished_at": None,
+            "status": "teaching",
+            "stop_reason": None,
+            "trajectory_point_count": None,
+            "episode_index": None,
+            "error": None,
+        }
+        self.teaching_attempts.append(attempt)
+        self.status = "teaching"
+        return attempt
+
+    def mark_teaching_ready(
+        self,
+        attempt: dict[str, Any],
+        trajectory_point_count: int,
+    ) -> None:
+        """记录示教结束和控制器轨迹保存结果。"""
+        attempt["teaching_finished_at"] = _utc_now()
+        attempt["status"] = "ready_for_replay"
+        attempt["trajectory_point_count"] = trajectory_point_count
+        self.status = "waiting_for_origin"
+
+    def finish_teaching_attempt(
+        self,
+        attempt: dict[str, Any],
+        *,
+        status: str,
+        stop_reason: str,
+        episode_index: int | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        """结束一次示教尝试并记录关联 episode。"""
+        attempt["finished_at"] = _utc_now()
+        attempt["status"] = status
+        attempt["stop_reason"] = stop_reason
+        attempt["episode_index"] = episode_index
+        attempt["error"] = None if error is None else f"{type(error).__name__}: {error}"
+        self.status = "ready"
 
     def start_episode(self, episode_index: int, output_path: Path) -> dict[str, Any]:
         episode = {
