@@ -1,0 +1,4 @@
+string path
+---
+int32 status
+int32 point_count

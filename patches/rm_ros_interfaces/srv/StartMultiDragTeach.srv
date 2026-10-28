@@ -1,0 +1,4 @@
+int32 mode
+bool singular_wall
+---
+int32 status

@@ -191,11 +191,40 @@ local_package() {
     prefix=$(ros2 pkg prefix "$1") || return 1
     [[ "$prefix" == "$ROOT/install/"* ]]
 }
+apply_drag_services() {
+    # Official rm_ros_interfaces ships messages only. Drag collection calls these services.
+    local dest="$ROOT/third_party/ros2_rm_robot/rm_ros_interfaces"
+    local src="$ROOT/patches/rm_ros_interfaces/srv"
+    [[ -d "$src" && -f "$dest/CMakeLists.txt" ]]
+    mkdir -p "$dest/srv"
+    cp -f "$src"/*.srv "$dest/srv/"
+    /usr/bin/python3 - "$dest/CMakeLists.txt" <<'PY'
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+services = [
+    "srv/CommandResult.srv",
+    "srv/SaveDragTrajectory.srv",
+    "srv/SetForceDragMode.srv",
+    "srv/StartMultiDragTeach.srv",
+]
+anchor = "  ${msg_files}\n"
+index = text.find(anchor)
+if index < 0:
+    raise SystemExit("rm_ros_interfaces CMakeLists.txt has no ${msg_files} entry")
+addition = "".join(f"  {name}\n" for name in services if name not in text)
+if addition:
+    insert_at = index + len(anchor)
+    path.write_text(text[:insert_at] + addition + text[insert_at:])
+PY
+}
 check_6() {
     [[ -f "$STATE_DIR/interfaces.sha256" && "$(cat "$STATE_DIR/interfaces.sha256")" == "$(interface_hash)" ]] || return 1
     (source_ros; local_package rm_ros_interfaces && ros2 interface show rm_ros_interfaces/srv/StartMultiDragTeach >/dev/null)
 }
 install_6() {
+    apply_drag_services
     (source_ros; colcon build --base-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --packages-select rm_ros_interfaces --cmake-clean-cache --cmake-args -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=/usr/bin/python3)
     interface_hash > "$STATE_DIR/interfaces.sha256"
 }

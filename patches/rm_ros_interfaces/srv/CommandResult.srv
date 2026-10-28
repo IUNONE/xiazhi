@@ -1,0 +1,3 @@
+# Empty request. status is the RealMan SDK return code.
+---
+int32 status
