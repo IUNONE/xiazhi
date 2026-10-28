@@ -133,13 +133,15 @@ install_3() {
 }
 check_4() {
     [[ -f /etc/ros/rosdep/sources.list.d/20-default.list && -f "$STATE_DIR/rosdep-updated" ]] || return 1
-    (source_ros; rosdep check --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src --rosdistro humble -t build -t buildtool -t build_export -t exec)
+    # Upstream rm_65_config exec_depends on rm_65_description, which is not a package.
+    # The URDF lives in rm_description; xacro already loads it from there.
+    (source_ros; rosdep check --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src --rosdistro humble --skip-keys rm_65_description -t build -t buildtool -t build_export -t exec)
 }
 install_4() {
     if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then sudo rosdep init; fi
     rosdep update --rosdistro humble
     touch "$STATE_DIR/rosdep-updated"
-    (source_ros; rosdep install --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src -y --rosdistro humble -t build -t buildtool -t build_export -t exec)
+    (source_ros; rosdep install --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src -y --rosdistro humble --skip-keys rm_65_description -t build -t buildtool -t build_export -t exec)
 }
 CONFIG="$ROOT/third_party/ros2_rm_robot/rm_driver/config/rm_eco63_config.yaml"
 configure_robot() {
