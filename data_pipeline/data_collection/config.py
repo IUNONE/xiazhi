@@ -4,6 +4,8 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from data_pipeline.data_collection.teleoperation.config import LeaderConfig, COMMAND_TOPIC, LEADER_TOPIC
+
 
 ROBOT_TOPICS = (
     "/joint_states",
@@ -68,7 +70,6 @@ class CameraConfig:
     width: int = 640
     height: int = 480
     enable_depth: bool = True
-    warmup_s: float = 1.0
 
     def validate(self) -> None:
         if not self.name or Path(self.name).name != self.name:
@@ -77,8 +78,6 @@ class CameraConfig:
             raise ValueError("camera serial_number 不允许为空")
         if self.fps <= 0 or self.width <= 0 or self.height <= 0:
             raise ValueError("camera fps, width 和 height 必须大于 0")
-        if self.warmup_s <= 0:
-            raise ValueError("camera warmup_s 必须大于 0")
 
     def topics(self) -> tuple[str, ...]:
         namespace = self.name.strip("/")
@@ -111,8 +110,18 @@ class CollectionConfig:
     capture_mode: str = "direct"
     replay_pre_roll_s: float = 1.0
     replay_post_roll_s: float = 0.5
+    teaching_mode: str = "drag"
+    leader: LeaderConfig | None = None
 
     def validate(self) -> None:
+        if self.teaching_mode not in {"drag", "leader-follower"}:
+            raise ValueError("teaching_mode 必须为 drag 或 leader-follower")
+        if self.teaching_mode == "leader-follower":
+            if self.capture_mode != "direct" or self.leader is None:
+                raise ValueError("主从遥操需要 direct 和 leader 配置")
+            self.leader.validate()
+        elif self.leader is not None:
+            raise ValueError("drag 模式不能提供 leader 配置")
         if not self.cameras:
             raise ValueError("cameras 必须至少包含一台 Gemini 335")
         for camera in self.cameras:
@@ -163,7 +172,8 @@ class CollectionConfig:
 
     def topics(self) -> tuple[str, ...]:
         camera_topics = tuple(topic for camera in self.cameras for topic in camera.topics())
-        return tuple(dict.fromkeys(ROBOT_TOPICS + camera_topics + self.extra_topics))
+        teleop_topics = (COMMAND_TOPIC, LEADER_TOPIC, "/rm_driver/movej_canfd_cmd") if self.teaching_mode == "leader-follower" else ()
+        return tuple(dict.fromkeys(ROBOT_TOPICS + camera_topics + self.extra_topics + teleop_topics))
 
     def fresh_sample_topics(self) -> tuple[str, ...]:
         camera_topics = tuple(topic for camera in self.cameras for topic in camera.sample_topics())

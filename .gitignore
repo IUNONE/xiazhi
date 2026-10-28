@@ -72,3 +72,6 @@ install/
 log/
 .colcon/
 compile_commands.json
+
+# Resumable workspace installation state and logs
+.setup-state/

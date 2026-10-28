@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import math
 import uuid
+
+from data_pipeline.data_collection.teleoperation.config import LeaderConfig
 from pathlib import Path
 
 from data_pipeline.data_collection import (
@@ -81,7 +83,23 @@ def main() -> None:
     )
     parser.add_argument("--replay-pre-roll-s", type=float, default=1.0)
     parser.add_argument("--replay-post-roll-s", type=float, default=0.5)
+    parser.add_argument("--teaching-mode", choices=["drag", "leader-follower"], default="drag")
+    parser.add_argument("--leader-port")
+    parser.add_argument("--leader-calibration", type=Path)
+    parser.add_argument("--teleop-config", type=Path, help="独立运行配置；默认 configs/teleoperation/eco63_runtime.json")
+    parser.add_argument("--leader-baudrate", type=int, default=115200)
+    parser.add_argument("--control-hz", type=float, default=30)
+    parser.add_argument("--leader-stale-after-s", type=float, default=0.3)
+    parser.add_argument("--unlock-leader", action="store_true", help="兼容参数；采集始终在扶稳后按 r 时卸力，连接时不卸力")
     args = parser.parse_args()
+    leader = None
+    if args.teaching_mode == "leader-follower":
+        if not args.leader_port or args.leader_calibration is None:
+            parser.error("leader-follower 需要 --leader-port 和 --leader-calibration")
+        leader = LeaderConfig(args.leader_port, args.leader_calibration, args.leader_baudrate,
+                              args.control_hz, args.leader_stale_after_s, args.teleop_config)
+    elif args.leader_port or args.leader_calibration or args.unlock_leader or args.teleop_config:
+        parser.error("主臂参数需要 --teaching-mode leader-follower")
 
     cameras = tuple(
         CameraConfig(
@@ -111,6 +129,8 @@ def main() -> None:
         session_id=args.session_id or str(uuid.uuid4()),
         cameras=cameras,
         robot=robot,
+        teaching_mode=args.teaching_mode,
+        leader=leader,
         extra_topics=tuple(args.extra_topic),
         storage_id=args.storage_id,
         startup_timeout_s=args.startup_timeout_s,

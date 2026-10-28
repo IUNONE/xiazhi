@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "verified": false,
+  "model": "Zhongling ZP10D (verify feedback protocol on your hardware)",
+  "servo_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "raw_min": [
+    500,
+    500,
+    500,
+    500,
+    500,
+    500,
+    500
+  ],
+  "raw_max": [
+    2500,
+    2500,
+    2500,
+    2500,
+    2500,
+    2500,
+    2500
+  ],
+  "angle_range_deg": [
+    270,
+    270,
+    270,
+    270,
+    270,
+    270,
+    270
+  ],
+  "joint_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "direction": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "scale": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "zero_raw": null,
+  "zero_joints_deg": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "home_raw": null
+}

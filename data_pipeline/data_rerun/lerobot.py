@@ -29,6 +29,7 @@ class LeRobotRerunConfig:
     output_dir: Path | None = None
     batch_size: int = 32
     num_workers: int = 0
+    blueprint_path: Path | None = None
 
 
 class LeRobotRerunVisualizer:
@@ -81,6 +82,14 @@ class LeRobotRerunVisualizer:
             episodes=[self.config.episode_index],
             root=self.config.root,
         )
+        if self.config.blueprint_path is not None:
+            from lerobot.scripts.lerobot_dataset_viz import build_blueprint_from_dataset
+            if self.config.blueprint_path.exists():
+                raise FileExistsError(self.config.blueprint_path)
+            build_blueprint_from_dataset(dataset).save(
+                f"{self.config.repo_id}/episode_{self.config.episode_index}",
+                self.config.blueprint_path,
+            )
         result = visualize_dataset(
             dataset=dataset,
             episode_index=self.config.episode_index,

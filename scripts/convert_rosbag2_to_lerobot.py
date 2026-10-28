@@ -48,6 +48,7 @@ def main() -> None:
     parser.add_argument("--repo-id", required=True)
     parser.add_argument("--task", required=True)
     parser.add_argument("--fps", type=int, required=True)
+    parser.add_argument("--action-topic", default=None, help="遥操 JointState 命令 topic；默认从 session manifest 推断")
     parser.add_argument("--state-topic", default="/joint_states")
     parser.add_argument("--state-field", default="position")
     parser.add_argument("--ee-pose-topic", default="/rm_driver/udp_arm_position")
@@ -66,6 +67,7 @@ def main() -> None:
         task=args.task,
         fps=args.fps,
         state_topic=args.state_topic,
+        action_topic=args.action_topic,
         state_field=args.state_field,
         ee_pose_topic=args.ee_pose_topic,
         force_topic=args.force_topic,

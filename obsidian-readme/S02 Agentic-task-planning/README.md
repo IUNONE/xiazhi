@@ -1,4 +1,3 @@
-# S02 Agentic-task-planning
 
 ## 说明
 

@@ -27,8 +27,23 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         type=Path,
+        nargs="?",
         help="输入路径: mcap 文件, mcap rosbag2 目录, sqlite rosbag2 目录, 或 lerobot 数据集目录",
     )
+    directories = parser.add_mutually_exclusive_group()
+    directories.add_argument("--mcap_datasets_dir", "--mcap-datasets-dir", type=Path,
+                             help="递归浏览目录下所有 MCAP episode")
+    directories.add_argument("--lerobot_datasets_dir", "--lerobot-datasets-dir", type=Path,
+                             help="递归浏览 LeRobot 数据集中的所有 episode")
+    parser.add_argument("--cache-dir", type=Path,
+                        default=Path(__file__).resolve().parents[1] / "outputs/rerun_cache",
+                        help="目录浏览使用的 RRD 缓存目录")
+    parser.add_argument("--memory-limit", default="50%", help="目录 Viewer 的内存上限，例如 4GB 或 50%")
+    parser.add_argument(
+        "--instruction", default=None,
+        help="MCAP/rosbag2 Viewer 左上角显示的任务说明",
+    )
+    parser.add_argument("--eef-link", default="Link6", help="FK 末端 link，默认 Link6；位移单位米")
     parser.add_argument("--output-rrd", type=Path, default=None, help="输出 RRD 路径")
     parser.add_argument(
         "--output-dir",
@@ -40,8 +55,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--episode-index",
         type=int,
-        default=0,
-        help="lerobot 可视化的 episode index",
+        default=None,
+        help="lerobot 单 episode 索引，默认 0；目录模式查看全部",
     )
     parser.add_argument("--root", type=Path, default=None, help="lerobot root 目录, 默认使用输入目录")
     parser.add_argument("--batch-size", type=int, default=32, help="lerobot batch_size")
@@ -57,7 +72,19 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="MCAP 可视化时不加载仓库中的 ECO63 六维力模型",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    directory_mode = args.mcap_datasets_dir is not None or args.lerobot_datasets_dir is not None
+    if (args.path is not None) == directory_mode:
+        parser.error("请提供单个 path，或 --mcap_datasets_dir / --lerobot_datasets_dir 之一")
+    if directory_mode and any(value is not None for value in (
+        args.output_rrd, args.output_dir, args.root, args.repo_id, args.episode_index,
+    )):
+        parser.error("目录模式不能使用输出参数、--root、--repo-id 或 --episode-index")
+    if args.batch_size <= 0 or args.num_workers < 0:
+        parser.error("batch-size 必须为正数，num-workers 不能为负数")
+    if args.episode_index is not None and args.episode_index < 0:
+        parser.error("episode-index 不能为负数")
+    return args
 
 
 def _resolve_output_rrd(args: argparse.Namespace) -> Path | None:
@@ -109,6 +136,8 @@ def _visualize_mcap(
         (path,),
         robot_xacro=robot_xacro,
         camera_names=tuple(args.camera_name),
+        instruction=args.instruction,
+        eef_link=args.eef_link,
     )
     if output_rrd is None:
         visualizer.view()
@@ -140,7 +169,7 @@ def _visualize_lerobot(
     result = LeRobotRerunVisualizer(
         LeRobotRerunConfig(
             repo_id=repo_id,
-            episode_index=args.episode_index,
+            episode_index=args.episode_index if args.episode_index is not None else 0,
             root=root,
             save=output_rrd is not None,
             output_dir=output_rrd,
@@ -154,6 +183,19 @@ def _visualize_lerobot(
 
 def main() -> None:
     args = _parse_args()
+    if args.mcap_datasets_dir is not None or args.lerobot_datasets_dir is not None:
+        from data_pipeline.data_rerun.directory import view_directory
+        kind = "mcap" if args.mcap_datasets_dir is not None else "lerobot"
+        root = args.mcap_datasets_dir if kind == "mcap" else args.lerobot_datasets_dir
+        view_directory(root, kind, args.cache_dir, {
+            "robot_xacro": str(_DEFAULT_ROBOT_XACRO) if kind == "mcap" and not args.no_robot_model else None,
+            "camera_names": args.camera_name,
+            "instruction": args.instruction,
+            "eef_link": args.eef_link,
+            "batch_size": args.batch_size,
+            "num_workers": args.num_workers,
+        }, args.memory_limit)
+        return
     input_path = args.path
     output_rrd = _resolve_output_rrd(args)
     kind = _detect_input_kind(input_path)

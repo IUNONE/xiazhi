@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -51,8 +52,11 @@ class LeRobotConversionConfig:
     tolerance_s: float = 0.05
     use_videos: bool = True
     joint_count: int = 6
+    action_topic: str | None = None
 
     def validate(self) -> None:
+        if self.action_topic is not None and not self.action_topic.startswith("/"):
+            raise ValueError("action_topic 必须为绝对 ROS topic")
         if self.fps <= 0:
             raise ValueError("fps 必须大于 0")
         if self.tolerance_s <= 0:
@@ -82,6 +86,21 @@ class Rosbag2ToLeRobotConverter:
     def __init__(self, config: LeRobotConversionConfig) -> None:
         config.validate()
         self.config = config
+        self.action_topic = config.action_topic
+        self.source_manifest = None
+        manifest_path = config.input_bag.parent / "session_manifest.json"
+        if manifest_path.is_file():
+            self.source_manifest = json.loads(manifest_path.read_text())
+            for episode in self.source_manifest.get("episodes", []):
+                if Path(episode["output_path"]).name == config.input_bag.name and episode.get("status") != "completed":
+                    raise ValueError("输入 episode 未成功结束，请先审查失败记录")
+            action = self.source_manifest.get("action", {})
+            if action.get("source") == "leader_follower_submitted_joint_target":
+                recorded_topic = action["topic"]
+                if self.action_topic is not None and self.action_topic != recorded_topic:
+                    raise ValueError("action_topic 与 session manifest 不一致")
+                self.action_topic = recorded_topic
+
 
     def _build_observation(self, pending: PendingFrame) -> dict[str, Any] | None:
         required_topics = {
@@ -89,6 +108,8 @@ class Rosbag2ToLeRobotConverter:
             self.config.force_topic,
             *(item.topic for item in self.config.image_topics),
         }
+        if self.action_topic is not None:
+            required_topics.add(self.action_topic)
         if not required_topics.issubset(pending.candidates):
             return None
         state = extract_numeric_vector(
@@ -112,6 +133,18 @@ class Rosbag2ToLeRobotConverter:
             ),
             "task": self.config.task,
         }
+        if self.action_topic is not None:
+            command = pending.candidates[self.action_topic]
+            if command.type_name != "sensor_msgs/msg/JointState":
+                raise TypeError("遥操 action 必须是 JointState")
+            values = dict(zip(command.message.name, command.message.position))
+            names = [f"joint_{i}" for i in range(1, 7)]
+            if len(command.message.name) != len(command.message.position) or len(values) != 6 or set(values) != set(names):
+                raise ValueError("遥操 action 关节名称/维度无效")
+            target = np.asarray([values[n] for n in names], dtype=np.float32)
+            if not np.isfinite(target).all():
+                raise ValueError("遥操 action 包含非有限值")
+            observation["action"] = target
         for image_config in self.config.image_topics:
             record = pending.candidates[image_config.topic]
             key = f"observation.images.{image_config.name}"
@@ -168,6 +201,8 @@ class Rosbag2ToLeRobotConverter:
             self.config.force_topic,
             *(item.topic for item in self.config.image_topics),
         }
+        if self.action_topic is not None:
+            candidate_topics.add(self.action_topic)
         latest_by_topic: dict[str, MessageRecord] = {}
         pending_frames: list[PendingFrame] = []
         last_state_timestamp_ns: int | None = None
@@ -192,6 +227,7 @@ class Rosbag2ToLeRobotConverter:
                     topic: candidate
                     for topic, candidate in latest_by_topic.items()
                     if record.timestamp_ns - candidate.timestamp_ns <= tolerance_ns
+                    and topic != self.action_topic
                 }
                 pending_frames.append(PendingFrame(record, candidates))
                 last_state_timestamp_ns = record.timestamp_ns
@@ -201,6 +237,12 @@ class Rosbag2ToLeRobotConverter:
                 continue
             latest_by_topic[record.topic] = record
             for pending in pending_frames:
+                if record.topic == self.action_topic:
+                    # First submitted command at/after state time; no nearest-past action.
+                    delta = record.timestamp_ns - pending.state_record.timestamp_ns
+                    if 0 <= delta <= tolerance_ns and record.topic not in pending.candidates:
+                        pending.candidates[record.topic] = record
+                    continue
                 difference_ns = abs(record.timestamp_ns - pending.state_record.timestamp_ns)
                 if difference_ns > tolerance_ns:
                     continue
@@ -224,16 +266,19 @@ class Rosbag2ToLeRobotConverter:
             self.config.force_topic,
             *(item.topic for item in self.config.image_topics),
         }
+        if self.action_topic is not None:
+            topics.add(self.action_topic)
         records = Rosbag2Reader(
             self.config.input_bag,
             storage_id=self.config.storage_id,
         ).iter_records(topics)
-        frames = pair_next_joint_targets(self._aligned_observations(records))
+        observations = self._aligned_observations(records)
+        frames = observations if self.action_topic is not None else pair_next_joint_targets(observations)
         try:
             first_frame = next(frames)
         except StopIteration as exc:
             raise ValueError(
-                "至少需要两个完成对齐的 observation 才能构造 action"
+                "没有完整的 observation/action；拖动需要两帧，遥操需要有效命令流"
             ) from exc
 
         try:
@@ -259,4 +304,13 @@ class Rosbag2ToLeRobotConverter:
             dataset.save_episode()
         finally:
             dataset.finalize()
+        provenance = {
+            "source": "leader_follower_submitted_joint_target" if self.action_topic else "derived_next_joint_target",
+            "unit": "rad", "topic": self.action_topic,
+            "alignment": "first_command_at_or_after_observation" if self.action_topic else "next_observation",
+            "tolerance_s": self.config.tolerance_s,
+            "source_session": self.source_manifest,
+        }
+        with (Path(dataset.root) / "action_provenance.json").open("x", encoding="utf-8") as stream:
+            json.dump(provenance, stream, ensure_ascii=False, indent=2)
         return Path(dataset.root)

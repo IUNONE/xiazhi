@@ -40,6 +40,18 @@
 
 本项目由霞智具身智能团队与上海交通大学合作开展。当前数据采集硬件基线为 RealMan ECO63 一体化六维力版本和 3 台 Orbbec Gemini 335，相应软件运行在 ROS 2 Humble 下。
 
+## 数据采集环境安装
+
+```bash
+git clone --recurse-submodules https://github.com/IUNONE/xiazhi.git
+cd xiazhi
+
+bash scripts/setup.sh --list         # 查看步骤
+bash scripts/setup.sh                # 安装，跳过已安装项
+bash scripts/setup.sh --resume       # 断点续跑
+bash scripts/setup.sh --from-step 6  # 从第 6 步开始
+```
+
 ## 仓库状态
 
 本仓库目前处于初始化阶段。后续将逐步补充任务定义、系统架构、数据集、训练方法、评测方案和部署文档。

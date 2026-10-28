@@ -1,4 +1,3 @@
-# obsidian-readme
 
 ## 章节
 
@@ -13,10 +12,10 @@
 
 存放 zsh 的数据管线使用指令与结果
 
-- 00-data-collection-lerobot.md
-- 01-data-collection-ros2-mcap.md
-
-Rerun 可视化与采集验收已分别放在 00 和 01 文档末尾。
+- [01 拖动示教 ROS 2/MCAP 采集](<S01 data-pipeline/01-data-collect-drag-ros2-mcap.md>)
+- [02 主从遥操 ROS 2/MCAP 采集](<S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md>)
+- [03 MCAP 转 LeRobot](<S01 data-pipeline/03-data-collection-mcap2lerobot.md>)
+- [04 Rerun 可视化与验收](<S01 data-pipeline/04-data-collect-rerun-visualization.md>)
 
 ## 其他章节
 
