@@ -15,6 +15,17 @@ import numpy as np
 from data_pipeline.data_rerun.robot_model import build_robot_urdf
 
 LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2/uarm_config2_leader.urdf"
+# CAD base face normal becomes world +Z; its horizontal edge becomes +X.
+# Rows are orthonormal CAD axes measured from fixed base STL faces.
+# Rotate the entire tree, including all joint frames.
+LEADER_BASE_ROTATION = np.array([
+    [0.9291949300533162, 0.369258404421656, 0.015652882392246596],
+    [-0.3695896957226246, 0.9283044039413159, 0.0406741986868336],
+    [0.0004886500491315925, -0.043579403244319484, 0.9990498470216581],
+])
+# Bounds center in XY and minimum Z of all four fixed meshes AFTER rotation.
+LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, 0.13785461667827545, 0.026392458186143327])
+LEADER_BASE_POSITION = (0.0, 0.55, 0.0)
 _PROXY_ENV = (
     "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
     "SOCKS_PROXY", "socks_proxy", "GIT_HTTP_PROXY", "GIT_HTTPS_PROXY",
@@ -72,7 +83,7 @@ class LeaderPreview:
             scene = rrb.Spatial3DView(
                 name='主臂与从臂', origin='/', contents=['/follower/**', '/leader/**', '/world/**'],
                 spatial_information=rrb.SpatialInformation(target_frame='world'),
-                eye_controls=rrb.EyeControls3D(position=(1.8, -1.3, 1.25), look_target=(0.25, 0.52, 0.35), eye_up=(0, 0, 1)),
+                eye_controls=rrb.EyeControls3D(position=(1.4, -1.1, 1.0), look_target=(0.15, 0.275, 0.3), eye_up=(0, 0, 1)),
             )
             blueprint = rrb.Blueprint(
                 rrb.Vertical(
@@ -110,7 +121,11 @@ class LeaderPreview:
             self.follower.log_urdf_to_recording(self.recording)
             self.leader.log_urdf_to_recording(self.recording)
             self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
-            self._log_base('leader', self.leader.root_link().name, (0.0, 1.4, 0.0))
+            self._log_base(
+                'leader', self.leader.root_link().name,
+                np.asarray(LEADER_BASE_POSITION) - LEADER_BASE_ROTATED_ANCHOR,
+                rotation=LEADER_BASE_ROTATION,
+            )
         except BaseException:
             self.close()
             raise
@@ -122,10 +137,10 @@ class LeaderPreview:
             raise ValueError(f'URDF 必须包含六个指定的旋转关节: {joint_names}')
         return joints
 
-    def _log_base(self, name, root_link, translation):
+    def _log_base(self, name, root_link, translation, rotation=None):
         self.recording.log(
             f'/world/{name}',
-            self.rr.Transform3D(translation=list(translation), parent_frame='world', child_frame=f'{name}/{root_link}'),
+            self.rr.Transform3D(translation=list(translation), mat3x3=rotation, parent_frame='world', child_frame=f'{name}/{root_link}'),
             static=True,
         )
 
@@ -162,7 +177,7 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(angles[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or '原点是 ECO63 从臂。Y 正方向 1.4 m 处是 U-Arm Config 2 网格，零位为 CAD 装配姿态。不连接真实从臂。'
+        status = message or '原点是 ECO63 从臂。Y 正方向 0.55 m 处是 U-Arm Config 2 底座，底座最低点位于地面，零位为 CAD 装配姿态。不连接真实从臂。'
         if target_deg is not None:
             status += '\n从臂保持在目标姿态，主臂网格跟随相对启动时的读数变化。'
         elif self.calibration.document.get('zero_raw') is None:

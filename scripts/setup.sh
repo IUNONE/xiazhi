@@ -105,14 +105,48 @@ check_1() {
     [[ -f third_party/ros2_rm_robot/rm_driver/package.xml && -f third_party/OrbbecSDK_ROS2/orbbec_camera/package.xml && -f third_party/lerobot/pyproject.toml ]]
 }
 install_1() { git submodule update --init --recursive; }
-PACKAGES=(git build-essential cmake pkg-config python3-venv python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
+PACKAGES=(git git-lfs build-essential cmake pkg-config python3-venv python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
+# These bundled U-Arm meshes are binary STL files stored in Git LFS.
+check_leader_meshes() {
+    /usr/bin/python3 - "$ROOT" <<'PYMESH'
+from pathlib import Path
+import struct
+import sys
+import xml.etree.ElementTree as ET
+
+root = Path(sys.argv[1]) / 'assets/robots/uarm_config2'
+try:
+    tree = ET.parse(root / 'uarm_config2_leader.urdf')
+    meshes = {node.attrib['filename'] for node in tree.findall('.//mesh')}
+    if not meshes:
+        raise ValueError('URDF contains no meshes')
+    for name in sorted(meshes):
+        path = root / name
+        data = path.read_bytes()
+        if data.startswith(b'version https://git-lfs.github.com/spec/v1'):
+            raise ValueError(f'{path}: Git LFS pointer; model has not been downloaded')
+        if len(data) < 84 or len(data) != 84 + 50 * struct.unpack_from('<I', data, 80)[0]:
+            raise ValueError(f'{path}: incomplete binary STL')
+except (OSError, ValueError, ET.ParseError) as exc:
+    print(f'Leader mesh verification failed: {exc}', file=sys.stderr)
+    sys.exit(1)
+PYMESH
+}
 check_2() {
     local package
     for package in "${PACKAGES[@]}"; do
         [[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null)" == 'install ok installed' ]] || return 1
     done
+    check_leader_meshes
 }
-install_2() { sudo apt-get update; sudo apt-get install -y "${PACKAGES[@]}"; }
+install_2() {
+    sudo apt-get update
+    sudo apt-get install -y "${PACKAGES[@]}"
+    git lfs install --local
+    git lfs pull --include="assets/robots/uarm_config2/meshes/*.stl" --exclude=""
+    git lfs checkout assets/robots/uarm_config2/meshes/
+    check_leader_meshes
+}
 sdk_source() {
     case "$(uname -m)" in
         x86_64) printf '%s\n' "$ROOT/third_party/ros2_rm_robot/rm_driver/lib/linux_x86_c++_v1.1.5/libapi_cpp.so" ;;
