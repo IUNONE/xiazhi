@@ -64,6 +64,7 @@ class LeaderPreview:
         self.reference = None
         self.t0 = None
         self.last_timestamp = None
+        self.last_display = None
         self.last_status = None
         self.recording = None
         self.viewer = None
@@ -168,8 +169,10 @@ class LeaderPreview:
     def is_open(self):
         return self.viewer is not None and self.viewer.poll() is None
 
-    def update(self, sample, target_deg=None, message=None):
-        if sample.timestamp_ns == self.last_timestamp:
+    def update(self, sample, target_deg=None, message=None, leader_target_deg=None):
+        display_key = (None if target_deg is None else tuple(target_deg),
+                       None if leader_target_deg is None else tuple(leader_target_deg), message)
+        if sample.timestamp_ns == self.last_timestamp and display_key == self.last_display:
             return
         angles = np.asarray(sample.positions, dtype=float)[self.indices]
         if self.reference is None:
@@ -180,6 +183,8 @@ class LeaderPreview:
         relative = angles - self.reference
         live = (self.model_calibration.joint_positions(sample.positions)
                 if self.model_calibration is not None else relative)
+        if leader_target_deg is not None:
+            live = np.deg2rad(leader_target_deg)
         if target_deg is not None:
             follower = np.deg2rad(target_deg)
         elif self.calibration.document.get('zero_raw') is not None:
@@ -200,18 +205,21 @@ class LeaderPreview:
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
         status = message or 'ECO63 is at the origin. The U-Arm Config 2 base is at Y=0.55 m, displayed at 3x scale with its base on the ground. Zero angles use the current URDF rest pose. No physical follower is connected.'
-        if target_deg is not None:
+        if leader_target_deg is not None:
+            status += '\nReference display only: physical U-Arm tracking is disabled during calibration.'
+        elif target_deg is not None:
             status += '\nThe follower holds the reference pose. The leader follows encoder readings.'
         elif self.calibration.document.get('zero_raw') is None:
             status += '\nFollower mapping is not calibrated: showing changes relative to startup.'
-        if self.model_calibration is None:
-            status += '\nLeader model is not calibrated: startup pose is temporarily treated as URDF zero. Use --calibrate-model to calibrate each joint.'
+        if self.model_calibration is None and leader_target_deg is None:
+            status += '\nLeader model is not calibrated: startup pose is temporarily treated as URDF zero. Use --calibrate-model to calibrate zero positions and directions.'
         if outside:
             status += '\nOutside URDF limits: ' + ', '.join(outside)
         if status != self.last_status:
             self.recording.log('/status', self.rr.TextDocument(status))
             self.last_status = status
         self.last_timestamp = sample.timestamp_ns
+        self.last_display = display_key
         self.recording.flush(timeout_sec=0)
 
     def close(self):

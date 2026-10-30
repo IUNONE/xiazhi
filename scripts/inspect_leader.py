@@ -17,7 +17,7 @@ import numpy as np
 from data_pipeline.data_collection.hardware.zhongling import ZhonglingLeader
 from data_pipeline.data_collection.teleoperation.calibration import calibrate_two_poses
 from data_pipeline.data_collection.teleoperation.config import Calibration, LeaderConfig
-from data_pipeline.data_rerun.leader_calibration import LeaderModelCalibration, joint_direction, sample_stable_raw
+from data_pipeline.data_rerun.leader_calibration import LeaderModelCalibration, model_axis_direction, sample_stable_raw
 from data_pipeline.data_rerun.robot_model import DEFAULT_ROBOT_XACRO
 
 
@@ -40,7 +40,8 @@ def main() -> None:
     output = parser.add_mutually_exclusive_group()
     output.add_argument('--save-init', type=Path, help='保存当前主臂 init 到新标定文件')
     output.add_argument('--calibrate', type=Path, help='两姿态标定输出文件，不覆盖已有文件')
-    output.add_argument('--calibrate-model', action='store_true', help='执行 U-Arm 模型逐关节零位与正方向标定；需 --viewer 和 --model-calibration-output')
+    output.add_argument('--calibrate-model', action='store_true', help='执行 U-Arm 模型固定参考姿态标定（只标零位和方向，不拟合角度比例）；需 --viewer 和 --model-calibration-output')
+    parser.add_argument('--model-reference-joints', type=six_angles, default=(90., 90., -90., 0., 0., 90.), help='U-Arm 方向参考姿态，degree；只使用角度正负号，0° 轴另用 +30° 补充姿态')
     parser.add_argument('--model-calibration-output', type=Path, help='输出：新建 U-Arm 模型标定 JSON，不覆盖已有文件')
     parser.add_argument('--model-calibration-input', type=Path, help='输入：加载已保存的 U-Arm 模型零位与正方向标定')
     parser.add_argument('--zero-joints', type=six_angles, default=(0.,)*6, help='零位对应的虚拟关节角，默认全零，degree')
@@ -60,6 +61,8 @@ def main() -> None:
         parser.error('--calibrate-model 与 --model-calibration-output 必须一起使用')
     if args.calibrate_model and (not args.viewer or args.model_calibration_input):
         parser.error('--calibrate-model 需要 --viewer，且不能同时指定 --model-calibration-input')
+    if args.calibrate_model and any(0 < abs(v) < 5 for v in args.model_reference_joints):
+        parser.error('模型标定位每轴需为 0° 或与零位至少相差 5°')
     destination = args.calibrate or args.save_init or args.model_calibration_output
     if destination is not None and destination.exists():
         raise FileExistsError(destination)
@@ -71,7 +74,8 @@ def main() -> None:
     model_calibration = (LeaderModelCalibration.load(args.model_calibration_input, calibration, LEADER_URDF)
                          if args.model_calibration_input else None)
     preview = None
-    target_pose = None
+    target_pose = [0.] * 6 if args.calibrate_model else None
+    leader_target_pose = [0.] * 6 if args.calibrate_model else None
     message = None
 
     def tick():
@@ -79,7 +83,7 @@ def main() -> None:
         if preview is not None:
             if not preview.is_open():
                 raise KeyboardInterrupt
-            preview.update(sample, target_deg=target_pose, message=message)
+            preview.update(sample, target_deg=target_pose, message=message, leader_target_deg=leader_target_pose)
         return sample
 
     def wait_enter(prompt, viewer_prompt, pose=None):
@@ -138,32 +142,53 @@ def main() -> None:
             wait_key('请扶稳主臂，按 t 卸力（无需 Enter）；q 退出。', b't', 'Support the leader arm. Press t to release torque, or q to quit.')
             leader.release_torque()
         if args.calibrate_model:
-            print('逐关节标定：直接按 y 确认，无需 Enter；按 q 退出。', flush=True)
-            zero, positive = [], []
-            for index, channel in enumerate(calibration.joint_indices):
+            print('参考姿态标定：模型固定显示参考姿态，不跟随实物。直接按 y 确认；按 q 退出。', flush=True)
+
+            def capture_pose(pose, label, viewer_label, zero=None, fit_indices=()):
+                nonlocal leader_target_pose
+                leader_target_pose = list(pose)
                 while True:
-                    wait_key(f'移动 joint_{index+1} 到零位，确定按下 y。', b'y', f'Move joint_{index+1} to zero. Press y to confirm, or q to quit.')
+                    if zero is None:
+                        prompt = '请参考 Rerun 将 u-arm 尽量准确摆为零位，保持静止，按 y 确认。'
+                        viewer_prompt = 'Match the physical U-Arm to the displayed zero pose as accurately as possible. Hold still and press y; q to quit.'
+                    else:
+                        joints = ', '.join(f'joint_{i+1}' for i in fit_indices)
+                        prompt = f'{label}：将 {joints} 从已记录零位沿画面所示方向移动，不必精确到显示角度。保持静止，按 y 确认。'
+                        viewer_prompt = f'Move {joints} from the recorded zero in the directions shown. Exact angles are NOT required. Hold still and press y; q to quit.'
+                    wait_key(prompt, b'y', viewer_prompt)
                     try:
-                        z = float(stable_reading([channel])[channel])
-                        break
+                        channels = [calibration.joint_indices[i] for i in fit_indices] if zero is not None else calibration.joint_indices
+                        raw = stable_reading(channels)[list(calibration.joint_indices)].tolist()
+                        for index in fit_indices:
+                            model_axis_direction(calibration, index, zero[index], raw[index], pose[index])
+                        return raw
                     except ValueError as exc:
-                        print(f'{exc}；请重试当前零位。', flush=True)
-                while True:
-                    wait_key(f'移动 joint_{index+1} 向正方向，确定按下 y。', b'y', f'Move joint_{index+1} in the positive direction. Press y to confirm, or q to quit.')
-                    try:
-                        p = float(stable_reading([channel])[channel])
-                        sign = joint_direction(calibration, index, z, p)
-                        break
-                    except ValueError as exc:
-                        print(f'{exc}；请重试当前正方向。', flush=True)
-                zero.append(z)
-                positive.append(p)
-                print(f'joint_{index+1} 已记录：zero_raw={z:g}, direction={sign:+d}', flush=True)
-            model_calibration = LeaderModelCalibration.from_readings(calibration, LEADER_URDF, zero, positive)
+                        print(f'{exc}；请重试当前姿态。', flush=True)
+
+            zero = capture_pose([0.] * 6, '零位', 'zero pose')
+            reference_deg = list(args.model_reference_joints)
+            changed = [i for i, value in enumerate(reference_deg) if value != 0]
+            missing = [i for i, value in enumerate(reference_deg) if value == 0]
+            reference = capture_pose(reference_deg, '标定位', 'reference pose', zero, changed)
+            poses = [{'joints_deg': reference_deg.copy(), 'raw': reference.copy()}]
+            if missing:
+                supplemental = [0.] * 6
+                for i in missing:
+                    supplemental[i] = 30.
+                print('以下关节在标定位中仍为零，需要补充 +30° 姿态：' + ', '.join(f'joint_{i+1}' for i in missing), flush=True)
+                extra = capture_pose(supplemental, '补充标定位', 'supplemental reference pose', zero, missing)
+                poses.append({'joints_deg': supplemental, 'raw': extra})
+                for i in missing:
+                    reference[i], reference_deg[i] = extra[i], 30.
+            model_calibration = LeaderModelCalibration.from_reference_readings(
+                calibration, LEADER_URDF, zero, reference, reference_deg, poses,
+            )
             save(model_calibration.document)
             preview.model_calibration = model_calibration
-            message = 'Leader model calibration complete. Live preview uses the saved zero positions and directions. Press Ctrl-C to exit.'
-            print('主臂模型标定完成，已切换到实时预览。Ctrl-C 退出。', flush=True)
+            leader_target_pose = None
+            target_pose = None
+            message = 'Leader model calibration complete. Live tracking restored using saved zero positions and directions. Encoder angle conversion is unchanged. Press Ctrl-C to exit.'
+            print('主臂模型零位和方向已保存，角度比例沿用设备配置，已恢复实物驱动模型。Ctrl-C 退出。', flush=True)
         elif args.calibrate:
             wait_enter(f'手动摆到零位 {list(args.zero_joints)}°，静止后按 Enter 记录。', f'Move the leader to the pose mapped to {list(args.zero_joints)} deg. Hold still and press Enter to record zero.', args.zero_joints)
             zero = stable_reading()
