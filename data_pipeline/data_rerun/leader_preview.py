@@ -28,7 +28,16 @@ LEADER_BASE_ROTATION = np.array([
 # Bounds center in XY and minimum Z of all four fixed meshes AFTER rotation.
 LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, -0.08889246692740739, 0.07760459952730553])
 LEADER_BASE_POSITION = (0.0, 0.55, 0.0)
-LEADER_DISPLAY_SCALE = 3.0
+LEADER_DISPLAY_SCALE = 2.0
+# Align the ECO63 shoulder axis with the U-Arm shoulder axis at the current
+# URDF zero pose. This rotation is display-only, around world Z.
+FOLLOWER_DISPLAY_YAW_DEG = -88.49450646
+_follower_yaw = np.deg2rad(FOLLOWER_DISPLAY_YAW_DEG)
+FOLLOWER_BASE_ROTATION = np.array([
+    [np.cos(_follower_yaw), -np.sin(_follower_yaw), 0.0],
+    [np.sin(_follower_yaw), np.cos(_follower_yaw), 0.0],
+    [0.0, 0.0, 1.0],
+])
 _PROXY_ENV = (
     "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
     "SOCKS_PROXY", "socks_proxy", "GIT_HTTP_PROXY", "GIT_HTTPS_PROXY",
@@ -127,7 +136,10 @@ class LeaderPreview:
             self.leader.log_urdf_to_recording(self.recording)
             self._log_joint_labels('leader', self.leader_joints, [255, 190, 60])
             self._log_joint_labels('follower', self.joints, [80, 200, 255])
-            self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
+            self._log_base(
+                'follower', self.follower.root_link().name, (0.0, 0.0, 0.0),
+                rotation=FOLLOWER_BASE_ROTATION,
+            )
             self._log_base(
                 'leader', self.leader.root_link().name,
                 np.asarray(LEADER_BASE_POSITION) - LEADER_DISPLAY_SCALE * LEADER_BASE_ROTATED_ANCHOR,
@@ -204,7 +216,7 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(live[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or 'ECO63 is at the origin. The U-Arm Config 2 base is at Y=0.55 m, displayed at 3x scale with its base on the ground. Zero angles use the current URDF rest pose. No physical follower is connected.'
+        status = message or f'ECO63 is at the origin with display yaw {FOLLOWER_DISPLAY_YAW_DEG:.1f} deg. The U-Arm Config 2 base is at Y=0.55 m, displayed at {LEADER_DISPLAY_SCALE:g}x scale with its base on the ground. Zero angles use the current URDF rest pose. No physical follower is connected.'
         if leader_target_deg is not None:
             status += '\nReference display only: physical U-Arm tracking is disabled during calibration.'
         elif target_deg is not None:

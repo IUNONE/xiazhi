@@ -146,7 +146,7 @@ class ZeroPosePreview:
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(math.radians(value), clamp=False))
         values = ', '.join(f'{name}: {value:.1f}' for name, value in zip(JOINT_NAMES, angles))
         self.recording.log('/status', self.rr.TextDocument(
-            'Offline zero-pose editor | Display scale: 3x\n' + values + ' (deg)\n'
+            f'Offline zero-pose editor | Display scale: {LEADER_DISPLAY_SCALE:g}x\n' + values + ' (deg)\n'
             'Use the separate slider window. Save Pose exports angles; it does not modify the URDF.'
         ))
         self.recording.flush(timeout_sec=0)

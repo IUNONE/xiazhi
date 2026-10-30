@@ -38,11 +38,12 @@ def main() -> None:
     parser.add_argument('--baudrate', type=int, default=115200)
     parser.add_argument('--unlock-leader', action='store_true')
     output = parser.add_mutually_exclusive_group()
-    output.add_argument('--save-init', type=Path, help='保存当前主臂 init 到新标定文件')
-    output.add_argument('--calibrate', type=Path, help='两姿态标定输出文件，不覆盖已有文件')
+    output.add_argument('--save-init', type=Path, help='保存当前主臂 init；覆盖已有文件需 --overwrite')
+    output.add_argument('--calibrate', type=Path, help='两姿态标定输出文件；覆盖已有文件需 --overwrite')
     output.add_argument('--calibrate-model', action='store_true', help='执行 U-Arm 模型固定参考姿态标定（只标零位和方向，不拟合角度比例）；需 --viewer 和 --model-calibration-output')
     parser.add_argument('--model-reference-joints', type=six_angles, default=(90., 90., -90., 0., 0., 90.), help='U-Arm 方向参考姿态，degree；只使用角度正负号，0° 轴另用 +30° 补充姿态')
-    parser.add_argument('--model-calibration-output', type=Path, help='输出：新建 U-Arm 模型标定 JSON，不覆盖已有文件')
+    parser.add_argument('--model-calibration-output', type=Path, help='输出：U-Arm 模型标定 JSON；覆盖已有文件需 --overwrite')
+    parser.add_argument('--overwrite', action='store_true', help='允许保存时覆盖已有输出文件')
     parser.add_argument('--model-calibration-input', type=Path, help='输入：加载已保存的 U-Arm 模型零位与正方向标定')
     parser.add_argument('--zero-joints', type=six_angles, default=(0.,)*6, help='零位对应的虚拟关节角，默认全零，degree')
     parser.add_argument('--reference-joints', type=six_angles, help='标定位对应的已知六关节角，degree；每轴需不同于零位')
@@ -64,8 +65,8 @@ def main() -> None:
     if args.calibrate_model and any(0 < abs(v) < 5 for v in args.model_reference_joints):
         parser.error('模型标定位每轴需为 0° 或与零位至少相差 5°')
     destination = args.calibrate or args.save_init or args.model_calibration_output
-    if destination is not None and destination.exists():
-        raise FileExistsError(destination)
+    if destination is not None and destination.exists() and not args.overwrite:
+        raise ValueError(f'{destination} already exists, add --overwrite to write')
     if (destination or args.unlock_leader) and not sys.stdin.isatty():
         parser.error('标定、保存 init 或卸力需要交互终端确认')
     calibration = Calibration.load(args.leader_config, require_verified=False)
@@ -128,10 +129,19 @@ def main() -> None:
         print(flush=True)
 
     def save(document):
+        text = json.dumps(document, ensure_ascii=False, indent=2)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with destination.open('x', encoding='utf-8') as stream:
-            json.dump(document, stream, ensure_ascii=False, indent=2)
-        print(f'已保存: {destination}', flush=True)
+        replaced = False
+        try:
+            stream = destination.open('x', encoding='utf-8')
+        except FileExistsError:
+            if not args.overwrite:
+                raise ValueError(f'{destination} already exists, add --overwrite to write') from None
+            stream = destination.open('w', encoding='utf-8')
+            replaced = True
+        with stream:
+            stream.write(text)
+        print(f'覆盖 {destination}' if replaced else f'已保存: {destination}', flush=True)
 
     try:
         if args.viewer:

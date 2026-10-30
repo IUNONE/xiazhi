@@ -35,22 +35,22 @@ python scripts/adjust_leader_zero.py \
 
 ```bash
 python scripts/inspect_leader.py \
-  --port "/dev/serial/by-id/${LEADER_PORT}" \
-  --leader-config configs/teleoperation/zhongling_eco63.example.json \
-  --calibrate-model \
-  --model-reference-joints='[90,90,-90,0,0,90]' \
-  --model-calibration-output configs/teleoperation/uarm.model.calibrated.json \
-  --viewer
+	--port "/dev/serial/by-id/${LEADER_PORT}" \
+	--leader-config configs/teleoperation/zhongling_eco63.example.json \
+	--calibrate-model \
+	--model-reference-joints='[90,90,-90,0,0,90]' \
+	--model-calibration-output configs/teleoperation/uarm.model.calibrated.json \
+	--viewer \
+	--overwrite
 ```
-
 
 
 ```bash
 python scripts/inspect_leader.py \
-  --port "/dev/serial/by-id/${LEADER_PORT}" \
-  --leader-config configs/teleoperation/zhongling_eco63.example.json \
-  --model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
-  --viewer
+	--port "/dev/serial/by-id/${LEADER_PORT}" \
+	--leader-config configs/teleoperation/zhongling_eco63.example.json \
+	--model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
+	--viewer
 ```
 
 ## 1.2 检查 eco63 零位正方向
