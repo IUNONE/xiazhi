@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "verified": false,
+  "kind": "leader_device_config",
+  "version": 1,
   "model": "Zhongling ZP10D (verify feedback protocol on your hardware)",
   "servo_ids": [
     0,
@@ -45,31 +45,5 @@
     3,
     4,
     5
-  ],
-  "direction": [
-    1,
-    1,
-    1,
-    1,
-    1,
-    1
-  ],
-  "scale": [
-    1,
-    1,
-    1,
-    1,
-    1,
-    1
-  ],
-  "zero_raw": null,
-  "zero_joints_deg": [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0
-  ],
-  "home_raw": null
+  ]
 }

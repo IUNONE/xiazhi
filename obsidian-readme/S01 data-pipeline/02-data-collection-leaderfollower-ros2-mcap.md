@@ -37,6 +37,8 @@ python scripts/arm_joints.py --arm leader --pose reference
 python scripts/arm_joints.py --arm follower --pose zero
 ```
 
+配置职责：`zhongling_eco63.example.json` 只保存舵机 ID、关节通道、原始读数范围和角度换算参数；主臂实物零位与方向由 1.1 的 `uarm.model.calibrated.json` 保存；主从 URDF 的 offset 与方向关系由 1.2 的 `leader_follower.mapping.json` 保存。`--leader-config` 的使用方式不变，已有标定无需因本次设备配置清理而重做。
+
 ## 1.1 标定主臂零位和正方向
 
 根据终端和 rerun 画面提示，将 主臂依次摆到 零位 和 标定位。
@@ -89,9 +91,7 @@ python scripts/inspect_leader.py \
 ```
 
 
-## 1.3 实物主臂与虚拟从臂的分步初始化
-
-仅真实 U-Arm 会电动运动，ECO63 始终是 Rerun 中的虚拟模型，不连接真实 ECO63。沿用 1.1、1.2 的配置，在检查命令中增加 `--follower_init_pose`：
+带力矩的回位置测试:
 
 ```bash
 python scripts/inspect_leader.py \
@@ -102,17 +102,6 @@ python scripts/inspect_leader.py \
   --follower_init_pose='[0,60,-135,75,90,0]' \
   --viewer
 ```
-
-按键流程（单键，无需 Enter）：
-
-1. 第一次 `i`：由从臂 init 反求主臂 URDF 角度，再由主臂实物标定反求舵机位置；电动移动真实 U-Arm，到位后保持力矩。此时虚拟从臂保持零位。
-2. 第二次 `i`：保持真实主臂位置，仅将虚拟 ECO63 平滑移到 init。
-3. `s`：扶稳主臂后卸载保持力矩，恢复真实主臂对虚拟 ECO63 的绝对跟随。
-4. `q` 或 Ctrl-C：退出。主臂电动运动过程中退出会发送已配置的停止指令；到位后的退出不会自动卸力或返航。
-
-逆变换为 `q_leader = direction * (q_follower_init - offset)`，再反算主臂编码器的零点、方向和角度换算。启动时显示反求的关节角及舵机目标，拒绝超出两臂 URDF 限位或主臂编码器量程的目标。运动和卸力仅作用于六个映射关节，不操作未映射通道。
-
-不需要额外的 `--teleop-config` 参数。电动运动内部复用默认文件 `configs/teleoperation/eco63_runtime.json` 的 `homing` 配置：位置指令、停止指令、运动时间、速度上限、到位容差及超时。仓库模板中的指令为 `null` 且 `verified=false`；必须先按实际舵机协议配置并核对这些字段，不能只将验证标记改为 true。配置不完整或预计速度超限时，第一次按 `i` 会报错并拒绝发送运动指令。
 
 ## 2. 启动采集
 

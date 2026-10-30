@@ -36,6 +36,11 @@ class LeaderConfig:
 
 @dataclass(frozen=True)
 class Calibration:
+    """Device settings or a composed runtime mapping.
+
+    Device JSON contains hardware fields only. Absolute offsets and directions
+    are supplied by the separate model calibration and URDF mapping at runtime.
+    """
     servo_ids: tuple[int, ...]
     raw_min: tuple[float, ...]
     raw_max: tuple[float, ...]
@@ -50,8 +55,16 @@ class Calibration:
     def load(cls, path: Path, *, require_verified: bool = True) -> Calibration:
         raw = path.read_bytes()
         d = json.loads(raw)
-        if d.get("version") not in (1, 2) or (require_verified and d.get("verified") is not True):
-            raise ValueError("标定必须为 version=1/2，并在实机核对后设置 verified=true")
+        device_only = d.get('kind') == 'leader_device_config'
+        if device_only:
+            if d.get('version') != 1:
+                raise ValueError('设备配置必须为 leader_device_config version=1')
+            if require_verified:
+                raise ValueError('设备配置不包含实物标定；请加载主臂模型标定及主从映射')
+        elif d.get('kind') is not None or d.get('version') not in (1, 2):
+            raise ValueError('不支持的设备配置或旧标定格式')
+        elif require_verified and d.get('verified') is not True:
+            raise ValueError('旧标定必须在实机核对后设置 verified=true')
         ids = d["servo_ids"]
         if len(ids) not in (6, 7) or len(set(ids)) != len(ids) or any(type(i) is not int or not 0 <= i <= 999 for i in ids):
             raise ValueError("servo_ids 必须包含 6 或 7 个唯一 ID")
@@ -60,25 +73,30 @@ class Calibration:
                 raise ValueError(f"无效标定字段: {key}")
         if any(lo >= hi or angle <= 0 for lo, hi, angle in zip(d['raw_min'], d['raw_max'], d['angle_range_deg'])):
             raise ValueError("原始反馈范围和角度范围无效")
-        for key in ("joint_indices", "direction", "scale"):
-            if len(d[key]) != 6 or not all(math.isfinite(float(v)) for v in d[key]):
-                raise ValueError(f"{key} 必须包含六个有限数值")
-        if len(set(d['joint_indices'])) != 6 or any(type(i) is not int or not 0 <= i < len(ids) for i in d['joint_indices']):
-            raise ValueError("joint_indices 必须指向六个不同主臂通道")
-        if any(v not in (-1, 1) for v in d['direction']):
-            raise ValueError("direction 只能是 -1 或 1")
-        if any(v <= 0 for v in d['scale']):
-            raise ValueError("scale 必须为正数")
-        zero = d.get('zero_raw')
-        if zero is not None:
-            if len(zero) != len(ids) or any(not math.isfinite(v) or not lo <= v <= hi for v,lo,hi in zip(zero,d['raw_min'],d['raw_max'])):
-                raise ValueError("zero_raw 无效")
-        expected = d.get('zero_joints_deg', [0]*6)
-        if len(expected) != 6 or not all(math.isfinite(v) for v in expected):
-            raise ValueError("zero_joints_deg 无效")
-        if require_verified and zero is None:
-            raise ValueError("缺少 zero_raw，请先完成主臂模型标定")
-        return cls(*(tuple(d[k]) for k in ('servo_ids','raw_min','raw_max','angle_range_deg','joint_indices','direction','scale')), hashlib.sha256(raw).hexdigest(), d)
+        indices = d['joint_indices']
+        if len(indices) != 6 or len(set(indices)) != 6 or any(type(i) is not int or not 0 <= i < len(ids) for i in indices):
+            raise ValueError('joint_indices 必须指向六个不同主臂通道')
+        if device_only:
+            # Internal neutral values satisfy the runtime adapter; they are not
+            # calibration data and are never inserted into the device document.
+            direction, scale = (1,) * 6, (1.,) * 6
+        else:
+            direction, scale = tuple(d['direction']), tuple(d['scale'])
+            if len(direction) != 6 or any(v not in (-1, 1) for v in direction):
+                raise ValueError('direction 必须包含六个 +1 或 -1')
+            if len(scale) != 6 or any(not math.isfinite(float(v)) or v <= 0 for v in scale):
+                raise ValueError('scale 必须包含六个正有限数值')
+            zero = d.get('zero_raw')
+            if zero is not None:
+                if len(zero) != len(ids) or any(not math.isfinite(v) or not lo <= v <= hi for v, lo, hi in zip(zero, d['raw_min'], d['raw_max'])):
+                    raise ValueError('zero_raw 无效')
+            expected = d.get('zero_joints_deg', [0] * 6)
+            if len(expected) != 6 or not all(math.isfinite(v) for v in expected):
+                raise ValueError('zero_joints_deg 无效')
+            if require_verified and zero is None:
+                raise ValueError('缺少 zero_raw，请先完成主臂模型标定')
+        return cls(*(tuple(d[k]) for k in ('servo_ids', 'raw_min', 'raw_max', 'angle_range_deg', 'joint_indices')),
+                   direction, scale, hashlib.sha256(raw).hexdigest(), d)
 
     def joint_positions(self, positions):
         """Map raw-converted motor angles to calibrated follower joint coordinates."""
