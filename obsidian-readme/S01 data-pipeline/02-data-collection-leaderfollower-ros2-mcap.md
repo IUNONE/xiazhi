@@ -6,9 +6,15 @@
 ls -l /dev/serial/by-id/
 ```
 
-
 ```bash
-LEADER_PORT="YOUR_LEADER"
+cd xiazhi
+source /opt/ros/humble/setup.zsh
+source ${HOME}/xiazhi/install/setup.bash
+source ${HOME}/xiazhi/.venv/bin/activate
+
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
+LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 
 python scripts/inspect_leader.py \
   --port "/dev/serial/by-id/${LEADER_PORT}" \

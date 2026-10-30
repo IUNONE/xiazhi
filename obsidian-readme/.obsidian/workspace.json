@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
+                "file": "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "01-data-collect-drag-ros2-mcap"
+              "title": "02-data-collection-leaderfollower-ros2-mcap"
             }
           }
         ]
@@ -190,9 +190,9 @@
   },
   "active": "e88d9c7f19b54426",
   "lastOpenFiles": [
-    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
-    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
     "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
+    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
+    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
     "S01 data-pipeline/04-data-collect-rerun-visualization.md",
     "assets",
     "S04 IL/README.md",

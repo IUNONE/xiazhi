@@ -5,19 +5,19 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 STATE_DIR="$ROOT/.setup-state"
 FROM_STEP=1
-TO_STEP=9
+TO_STEP=10
 RESUME=0
 ROBOT_IP=""
 ROBOT_PORT=""
 CURRENT_STEP=0
-TOTAL=9
-NAMES=("" "official submodules" "system dependencies" "RealMan SDK library" "rosdep dependencies" "RealMan connection configuration" "rm_ros_interfaces" "RealMan and Orbbec drivers" "Orbbec udev rules" "workspace verification")
+TOTAL=10
+NAMES=("" "official submodules" "system dependencies" "RealMan SDK library" "rosdep dependencies" "RealMan connection configuration" "rm_ros_interfaces" "RealMan and Orbbec drivers" "Orbbec udev rules" "workspace verification" "project venv")
 
 usage() {
     cat <<'EOF'
 Usage: bash scripts/setup.sh [options]
   --list                 List numbered steps; no changes
-  --from-step N          Start at step N (1..9)
+  --from-step N          Start at step N (1..10)
   --to-step N            Stop after step N
   --resume               Restart at the last failed/interrupted step
   --robot-ip IP          Set the driver's arm_ip (otherwise preserve existing value)
@@ -47,15 +47,15 @@ while (($#)); do
         *) printf 'Unknown argument: %s\n' "$1" >&2; usage; exit 2 ;;
     esac
 done
-[[ "$FROM_STEP" =~ ^[1-9]$ && "$TO_STEP" =~ ^[1-9]$ ]] || { echo 'Step must be 1..9' >&2; exit 2; }
+[[ "$FROM_STEP" =~ ^([1-9]|10)$ && "$TO_STEP" =~ ^([1-9]|10)$ ]] || { echo 'Step must be 1..10' >&2; exit 2; }
 if ((RESUME)); then
     [[ "$FROM_STEP" == 1 ]] || { echo '--resume and --from-step cannot be combined' >&2; exit 2; }
     if [[ -f "$STATE_DIR/next-step" ]]; then
         read -r FROM_STEP < "$STATE_DIR/next-step"
-        [[ "$FROM_STEP" =~ ^([1-9]|10)$ ]] || { echo 'Invalid resume checkpoint' >&2; exit 2; }
+        [[ "$FROM_STEP" =~ ^([1-9]|10|11)$ ]] || { echo 'Invalid resume checkpoint' >&2; exit 2; }
     fi
 fi
-if [[ "$FROM_STEP" == 10 ]]; then
+if [[ "$FROM_STEP" == 11 ]]; then
     echo 'Previous setup completed. Run without --resume to recheck installed state.'
     exit 0
 fi
@@ -105,7 +105,7 @@ check_1() {
     [[ -f third_party/ros2_rm_robot/rm_driver/package.xml && -f third_party/OrbbecSDK_ROS2/orbbec_camera/package.xml && -f third_party/lerobot/pyproject.toml ]]
 }
 install_1() { git submodule update --init --recursive; }
-PACKAGES=(git build-essential cmake pkg-config python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
+PACKAGES=(git build-essential cmake pkg-config python3-venv python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
 check_2() {
     local package
     for package in "${PACKAGES[@]}"; do
@@ -131,14 +131,94 @@ install_3() {
     [[ -f "$source" ]]
     (cd "$ROOT/third_party/ros2_rm_robot/rm_driver/lib"; sudo bash lib_install.sh)
 }
+use_rosdistro_index() {
+    if [[ -f "$STATE_DIR/rosdistro-index-url" ]]; then
+        read -r ROSDISTRO_INDEX_URL < "$STATE_DIR/rosdistro-index-url"
+        export ROSDISTRO_INDEX_URL
+    fi
+}
+write_rosdep_sources() {
+    local prefix="$1" tmp
+    tmp=$(mktemp)
+    cat > "$tmp" <<EOF
+# os-specific listings first
+yaml ${prefix}/rosdep/osx-homebrew.yaml osx
+
+# generic
+yaml ${prefix}/rosdep/base.yaml
+yaml ${prefix}/rosdep/python.yaml
+yaml ${prefix}/rosdep/ruby.yaml
+gbpdistro ${prefix}/releases/fuerte.yaml fuerte
+
+# newer distributions (Groovy, Hydro, ...) must not be listed anymore, they are being fetched from the rosdistro index.yaml
+EOF
+    if [[ -f /etc/ros/rosdep/sources.list.d/20-default.list ]] && cmp -s "$tmp" /etc/ros/rosdep/sources.list.d/20-default.list; then
+        rm -f "$tmp"
+        return 0
+    fi
+    sudo mkdir -p /etc/ros/rosdep/sources.list.d
+    sudo install -m 644 "$tmp" /etc/ros/rosdep/sources.list.d/20-default.list
+    rm -f "$tmp"
+}
+prepare_rosdistro() {
+    # rosdep init downloads its source list from GitHub and fails closed on timeout.
+    local final="$STATE_DIR/rosdistro-index-v4.yaml"
+    local -a names=("GitHub" "USTC" "TUNA" "TUNA-http")
+    local -a urls=(
+        "https://raw.githubusercontent.com/ros/rosdistro/master/index-v4.yaml"
+        "https://mirrors.ustc.edu.cn/rosdistro/index-v4.yaml"
+        "https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml"
+        "http://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml"
+    )
+    local -a prefixes=(
+        "https://raw.githubusercontent.com/ros/rosdistro/master"
+        "https://mirrors.ustc.edu.cn/rosdistro"
+        "https://mirrors.tuna.tsinghua.edu.cn/rosdistro"
+        "http://mirrors.tuna.tsinghua.edu.cn/rosdistro"
+    )
+    local i
+    for i in "${!names[@]}"; do
+        printf 'Trying rosdistro index from %s...\n' "${names[$i]}"
+        if /usr/bin/python3 - "${urls[$i]}" "${prefixes[$i]}" "$final" <<'PY'
+import pathlib
+import sys
+import urllib.request
+url, prefix, final = sys.argv[1:]
+github = "https://raw.githubusercontent.com/ros/rosdistro/master"
+request = urllib.request.Request(url, headers={"User-Agent": "xiazhi-setup"})
+try:
+    with urllib.request.urlopen(request, timeout=20) as response:
+        text = response.read().decode("utf-8")
+except Exception as exc:
+    print(f"unreachable: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if "humble:" not in text or "distributions:" not in text:
+    print("not a rosdistro index", file=sys.stderr)
+    raise SystemExit(1)
+if prefix != github:
+    text = text.replace(github, prefix)
+pathlib.Path(final).write_text(text)
+PY
+        then
+            printf 'Using rosdistro index from %s\n' "${names[$i]}"
+            write_rosdep_sources "${prefixes[$i]}"
+            printf 'file://%s\n' "$final" > "$STATE_DIR/rosdistro-index-url"
+            export ROSDISTRO_INDEX_URL="file://${final}"
+            return 0
+        fi
+    done
+    echo 'Could not download a rosdistro index from GitHub, USTC, or TUNA' >&2
+    return 1
+}
 check_4() {
     [[ -f /etc/ros/rosdep/sources.list.d/20-default.list && -f "$STATE_DIR/rosdep-updated" ]] || return 1
+    use_rosdistro_index
     # rm_65_description is not a package; the URDF is in rm_description.
     # warehouse_ros_mongo has no Humble deb: MongoDB left Ubuntu 22.04.
     (source_ros; rosdep check --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src --rosdistro humble --skip-keys "rm_65_description warehouse_ros_mongo" -t build -t buildtool -t build_export -t exec)
 }
 install_4() {
-    if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then sudo rosdep init; fi
+    prepare_rosdistro
     rosdep update --rosdistro humble
     touch "$STATE_DIR/rosdep-updated"
     (source_ros; rosdep install --from-paths third_party/ros2_rm_robot third_party/OrbbecSDK_ROS2 --ignore-src -y --rosdistro humble --skip-keys "rm_65_description warehouse_ros_mongo" -t build -t buildtool -t build_export -t exec)
@@ -253,6 +333,23 @@ verify_workspace() {
 # Verification always runs, even when all earlier stages were skipped.
 check_9() { return 1; }
 install_9() { verify_workspace; }
+check_10() {
+    local python="$ROOT/.venv/bin/python"
+    [[ -x "$python" && -f "$ROOT/.venv/pyvenv.cfg" ]] || return 1
+    grep -qx 'include-system-site-packages = true' "$ROOT/.venv/pyvenv.cfg" || return 1
+    [[ "$("$python" -c 'import sys; print("%d.%d" % sys.version_info[:2])')" == 3.10 ]] || return 1
+    "$python" -c 'import importlib.metadata, sys
+try:
+    version = importlib.metadata.version("rerun-sdk")
+except importlib.metadata.PackageNotFoundError:
+    sys.exit(1)
+parts = version.split(".")
+sys.exit(0 if len(parts) >= 2 and parts[0] == "0" and parts[1] == "33" else 1)' || return 1
+}
+install_10() {
+    /usr/bin/python3 -m venv --system-site-packages "$ROOT/.venv"
+    "$ROOT/.venv/bin/python" -m pip install 'rerun-sdk>=0.33.0,<0.34.0'
+}
 for ((CURRENT_STEP=FROM_STEP;CURRENT_STEP<=TO_STEP;CURRENT_STEP++)); do
     checkpoint "$CURRENT_STEP"
     if "check_$CURRENT_STEP"; then
@@ -267,5 +364,5 @@ for ((CURRENT_STEP=FROM_STEP;CURRENT_STEP<=TO_STEP;CURRENT_STEP++)); do
     checkpoint "$((CURRENT_STEP+1))"
 done
 printf 'Setup steps finished. Log: %s\n' "$LOG"
-printf 'In your terminal: source /opt/ros/humble/setup.zsh; source %q/install/setup.zsh\n' "$ROOT"
+printf 'In your terminal: source /opt/ros/humble/setup.zsh; source %q/install/setup.zsh; source %q/.venv/bin/activate\n' "$ROOT" "$ROOT"
 printf 'Reconnect cameras after installing udev rules. No hardware was connected by setup.\n'
