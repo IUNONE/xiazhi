@@ -1,4 +1,4 @@
-"""Inspect and calibrate the leader with an optional GPU-rendered virtual follower."""
+"""Inspect and calibrate the leader with an optional GPU preview of both arms."""
 from __future__ import annotations
 
 import argparse
@@ -38,7 +38,7 @@ def main() -> None:
     output.add_argument('--calibrate', type=Path, help='两姿态标定输出文件，不覆盖已有文件')
     parser.add_argument('--zero-joints', type=six_angles, default=(0.,)*6, help='零位对应的虚拟关节角，默认全零，degree')
     parser.add_argument('--reference-joints', type=six_angles, help='标定位对应的已知六关节角，degree；每轴需不同于零位')
-    parser.add_argument('--viewer', action='store_true', help='打开 Rerun GPU Viewer：虚拟从臂和六轴曲线')
+    parser.add_argument('--viewer', action='store_true', help='打开 Rerun GPU Viewer：主臂、从臂和六轴曲线')
     parser.add_argument('--viewer-fps', type=float, default=30)
     parser.add_argument('--robot-xacro', type=Path, default=DEFAULT_ROBOT_XACRO)
     parser.add_argument('--memory-limit', default='25%')
@@ -120,7 +120,7 @@ def main() -> None:
             if preview is not None:
                 preview.calibration = calibration
             target_pose = None
-            message = '两姿态标定完成；移动主臂检查虚拟从臂和曲线，Ctrl-C 退出。'
+            message = '两姿态标定完成；橙色主臂和 ECO63 应一起跟随，Ctrl-C 退出。'
             print(message, flush=True)
             if preview is None:
                 return

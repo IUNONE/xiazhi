@@ -13,6 +13,8 @@ import numpy as np
 
 from data_pipeline.data_rerun.robot_model import build_robot_urdf
 
+LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2_leader.urdf"
+
 
 class LeaderPreview:
     def __init__(self, calibration, robot_xacro: Path, joint_names, memory_limit: str):
@@ -36,17 +38,25 @@ class LeaderPreview:
         self.viewer = None
         self.temp = tempfile.TemporaryDirectory(prefix='xiazhi-leader-model-')
         try:
-            urdf = build_robot_urdf(robot_xacro.resolve())
-            model = Path(self.temp.name) / 'eco63.urdf'
-            model.write_bytes(urdf)
-            self.tree = UrdfTree.from_file_path(model, entity_path_prefix='robot_model')
-            self.joints = [self.tree.get_joint_by_name(name) for name in joint_names]
-            if any(joint is None or joint.joint_type not in ('revolute', 'continuous') for joint in self.joints):
-                raise ValueError(f'URDF 必须包含六个指定的旋转关节: {joint_names}')
+            if not LEADER_URDF.is_file():
+                raise FileNotFoundError(f'主臂 URDF 不存在: {LEADER_URDF}')
+            follower_urdf = build_robot_urdf(robot_xacro.resolve())
+            follower_model = Path(self.temp.name) / 'eco63.urdf'
+            follower_model.write_bytes(follower_urdf)
+            self.follower = UrdfTree.from_file_path(
+                follower_model, entity_path_prefix='follower', frame_prefix='follower/',
+                static_transform_entity_path='/follower/tf_static',
+            )
+            self.leader = UrdfTree.from_file_path(
+                LEADER_URDF, entity_path_prefix='leader', frame_prefix='leader/',
+                static_transform_entity_path='/leader/tf_static',
+            )
+            self.joints = self._revolute_joints(self.follower, joint_names)
+            self.leader_joints = self._revolute_joints(self.leader, joint_names)
             scene = rrb.Spatial3DView(
-                name='Virtual ECO63', origin='/', contents=['/robot_model/**', '/tf_static', '/joint_transforms/**'],
-                spatial_information=rrb.SpatialInformation(target_frame=self.tree.root_link().name),
-                eye_controls=rrb.EyeControls3D(position=(1.4, -1.4, 1.2), look_target=(0, 0, 0.45), eye_up=(0, 0, 1)),
+                name='主臂与从臂', origin='/', contents=['/follower/**', '/leader/**', '/world/**'],
+                spatial_information=rrb.SpatialInformation(target_frame='world'),
+                eye_controls=rrb.EyeControls3D(position=(1.8, -1.3, 1.25), look_target=(0.25, 0.52, 0.35), eye_up=(0, 0, 1)),
             )
             blueprint = rrb.Blueprint(
                 rrb.Vertical(
@@ -81,10 +91,27 @@ class LeaderPreview:
             self.recording = rr.RecordingStream('xiazhi_leader_preview', recording_id=uuid4())
             self.recording.connect_grpc(f'rerun+http://127.0.0.1:{port}/proxy', default_blueprint=blueprint)
             self.recording.send_blueprint(blueprint)
-            self.tree.log_urdf_to_recording(self.recording)
+            self.follower.log_urdf_to_recording(self.recording)
+            self.leader.log_urdf_to_recording(self.recording)
+            self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
+            self._log_base('leader', self.leader.root_link().name, (0.0, 1.05, 0.0))
         except BaseException:
             self.close()
             raise
+
+    @staticmethod
+    def _revolute_joints(tree, joint_names):
+        joints = [tree.get_joint_by_name(name) for name in joint_names]
+        if any(joint is None or joint.joint_type not in ('revolute', 'continuous') for joint in joints):
+            raise ValueError(f'URDF 必须包含六个指定的旋转关节: {joint_names}')
+        return joints
+
+    def _log_base(self, name, root_link, translation):
+        self.recording.log(
+            f'/world/{name}',
+            self.rr.Transform3D(translation=list(translation), parent_frame='world', child_frame=f'{name}/{root_link}'),
+            static=True,
+        )
 
     def is_open(self):
         return self.viewer is not None and self.viewer.poll() is None
@@ -97,26 +124,29 @@ class LeaderPreview:
             # Match teleoperation's relative engagement, without moving hardware.
             self.reference = angles.copy()
             self.t0 = sample.timestamp_ns
-        if target_deg is not None:
-            target = np.deg2rad(target_deg)
-        elif self.calibration.document.get('zero_raw') is not None:
-            target = self.calibration.joint_positions(sample.positions)
+        if self.calibration.document.get('zero_raw') is not None:
+            live = self.calibration.joint_positions(sample.positions)
         else:
-            target = np.asarray(self.calibration.direction)*self.calibration.scale*(angles-self.reference)
-        if not np.isfinite(target).all():
+            live = np.asarray(self.calibration.direction)*self.calibration.scale*(angles-self.reference)
+        follower = np.deg2rad(target_deg) if target_deg is not None else live
+        if not np.isfinite(live).all() or not np.isfinite(follower).all():
             raise ValueError('虚拟关节目标包含非有限数值')
         self.recording.set_time('leader_time', duration=(sample.timestamp_ns-self.t0)/1e9)
         outside = []
-        for index, (joint, value) in enumerate(zip(self.joints, target)):
+        for index, (joint, value) in enumerate(zip(self.joints, follower)):
             if value < joint.limit_lower or value > joint.limit_upper:
                 outside.append(joint.name)
             # Show the unmodified mapping; no dynamics or tracking-error simulation.
-            self.recording.log(f'/joint_transforms/{joint.name}', joint.compute_transform(float(value), clamp=False))
+            self.recording.log(f'/poses/follower/{joint.name}', joint.compute_transform(float(value), clamp=False))
             self.recording.log(f'/joints/{joint.name}', self.rr.Scalars(float(value)))
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(angles[index])))
-        status = message or '虚拟从臂预览 · joints 为标定角，leader_joints 为原始角(rad) · 不连接真实从臂'
-        if target_deg is None and self.calibration.document.get('zero_raw') is None:
-            status += '\n尚未标定：当前仅显示启动后的相对变化'
+        for joint, value in zip(self.leader_joints, live):
+            self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
+        status = message or '原点是 ECO63 从臂，Y 正方向 1.05 m 处的橙色模型是主臂 Config 2。不连接真实从臂。'
+        if target_deg is not None:
+            status += '\n从臂保持在目标姿态，主臂跟随当前读数。'
+        elif self.calibration.document.get('zero_raw') is None:
+            status += '\n尚未标定：两台模型都显示启动后的相对变化'
         if outside:
             status += '\n超出 URDF 限位：' + ', '.join(outside)
         if status != self.last_status:

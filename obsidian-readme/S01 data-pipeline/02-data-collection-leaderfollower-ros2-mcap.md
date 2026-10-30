@@ -9,7 +9,7 @@ ls -l /dev/serial/by-id/
 ```bash
 cd xiazhi
 source /opt/ros/humble/setup.zsh
-source ${HOME}/xiazhi/install/setup.bash
+source ${HOME}/xiazhi/install/setup.zsh
 source ${HOME}/xiazhi/.venv/bin/activate
 
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"

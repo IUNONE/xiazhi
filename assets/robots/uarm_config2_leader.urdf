@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<robot name="uarm_config2_leader">
+  <!-- Config 2 leader. Joint frames match RealMan ECO63 so the same joint angle has the same pose.
+       The U-Arm repository ships STL parts without joint origins, so the visuals are primitives. -->
+  <material name="leader_orange">
+    <color rgba="0.93 0.42 0.08 1"/>
+  </material>
+  <link name="base_root"/>
+  <joint name="base_root_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base_root"/>
+    <child link="base_link"/>
+  </joint>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.08" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.055" length="0.16"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0.1625" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="Link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="3" lower="-3.106" upper="3.106"/>
+  </joint>
+  <link name="Link1">
+    <visual>
+      <origin xyz="0 0 0.03" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.042" length="0.07"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="-0.086 0 0" rpy="-1.570793 -1.570793 3.141593"/>
+    <parent link="Link1"/>
+    <child link="Link2"/>
+    <axis xyz="0 0 -1"/>
+    <limit effort="10" velocity="3" lower="-3.106" upper="2.356"/>
+  </joint>
+  <link name="Link2">
+    <visual>
+      <origin xyz="0.205 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.41 0.042 0.046"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="0.41 0 0" rpy="-3.141586 -0.008727 0"/>
+    <parent link="Link2"/>
+    <child link="Link3"/>
+    <axis xyz="-0.008726 0 0.999962"/>
+    <limit effort="10" velocity="3" lower="-2.932" upper="2.7576"/>
+  </joint>
+  <link name="Link3">
+    <visual>
+      <origin xyz="0.19 0 -0.02" rpy="0 0 0"/>
+      <geometry><box size="0.38 0.036 0.04"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="0.3805 0 -0.055581" rpy="-0.008727 0 1.5708"/>
+    <parent link="Link3"/>
+    <child link="Link4"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="3" lower="-3.106" upper="3.106"/>
+  </joint>
+  <link name="Link4">
+    <visual>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.032" length="0.05"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0 -0.11 0" rpy="1.5708 0 0"/>
+    <parent link="Link4"/>
+    <child link="Link5"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="3" lower="-3.106" upper="3.106"/>
+  </joint>
+  <link name="Link5">
+    <visual>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.028" length="0.045"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+  <joint name="joint6" type="revolute">
+    <origin xyz="0 0.0795 0" rpy="-1.5708 0 0"/>
+    <parent link="Link5"/>
+    <child link="Link6"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="10" velocity="3" lower="-6.28" upper="6.28"/>
+  </joint>
+  <link name="Link6">
+    <visual>
+      <origin xyz="0.04 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.02" length="0.08"/></geometry>
+      <material name="leader_orange"/>
+    </visual>
+  </link>
+</robot>
