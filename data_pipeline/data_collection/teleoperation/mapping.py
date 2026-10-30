@@ -50,6 +50,13 @@ class JointMapping:
             raise ValueError('Expected six finite leader URDF joint angles.')
         return np.deg2rad(self.offset_deg) + self.direction * angles
 
+    def inverse(self, follower_rad):
+        angles = np.asarray(follower_rad, dtype=float)
+        if angles.shape != (6,) or not np.isfinite(angles).all():
+            raise ValueError('Expected six finite follower URDF joint angles.')
+        # Each sign is its own inverse; offsets are in follower coordinates.
+        return self.direction * (angles - np.deg2rad(self.offset_deg))
+
 
 def compose_absolute_calibration(device, model, mapping):
     """Compose the two calibrated coordinate transforms for the hardware reader."""

@@ -132,6 +132,25 @@ class LeaderModelCalibration:
     def joint_positions(self, positions):
         return self.direction * self.scale * (np.asarray(positions)[self.indices] - self.zero_angles)
 
+    def raw_targets(self, leader_rad, calibration):
+        """Invert the model calibration; return raw targets in model joint order."""
+        angles = np.asarray(leader_rad, dtype=float)
+        if angles.shape != (6,) or not np.isfinite(angles).all():
+            raise ValueError('主臂目标必须为六个有限关节角')
+        encoder = angles / (self.direction * self.scale) + self.zero_angles
+        indices = self.indices
+        lo = np.asarray(calibration.raw_min)[indices]
+        hi = np.asarray(calibration.raw_max)[indices]
+        raw = lo + np.rad2deg(encoder) / np.asarray(calibration.angle_range_deg)[indices] * (hi - lo)
+        invalid = np.where((raw < lo - 1e-7) | (raw > hi + 1e-7) | ~np.isfinite(raw))[0]
+        if len(invalid):
+            details = ', '.join(f'joint_{i+1}: {raw[i]:.2f} raw (range {lo[i]:g}..{hi[i]:g})' for i in invalid)
+            raise ValueError('反求的主臂位置超出编码器范围：' + details)
+        rounded = np.rint(raw).astype(int)
+        if np.any(rounded < lo) or np.any(rounded > hi):
+            raise ValueError('取整后的主臂目标超出编码器范围')
+        return rounded.tolist()
+
 
 def sample_stable_raw(read, channels, servo_ids, poll_interval, *, duration=0.8, timeout=3.0):
     """Require fresh scans, checking only the channels being calibrated."""

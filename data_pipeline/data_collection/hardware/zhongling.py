@@ -30,6 +30,8 @@ class ZhonglingLeader:
         self._lock = threading.Lock()
         self._io_lock = threading.RLock()
         self._homing_active = False
+        self._motion_channels = None
+        self._active_motion_settings = None
         self._latest = None
         self._failure = None
 
@@ -87,51 +89,76 @@ class ZhonglingLeader:
         if self._serial.write(payload) != len(payload):
             raise IOError("主臂指令未完整发送")
 
-    def release_torque(self) -> None:
+    def _channels(self, channels=None):
+        indices = list(range(len(self.calibration.servo_ids))) if channels is None else list(channels)
+        if not indices or len(set(indices)) != len(indices) or any(
+                type(i) is not int or not 0 <= i < len(self.calibration.servo_ids) for i in indices):
+            raise ValueError('主臂通道索引无效')
+        return indices
+
+    def release_torque(self, channels=None) -> None:
         """Called only after the operator confirms supporting the leader."""
+        indices = self._channels(channels)
         with self._io_lock:
-            for servo in self.calibration.servo_ids:
-                self._write(f"#{servo:03d}PULK!")
+            for channel in indices:
+                self._write(f"#{self.calibration.servo_ids[channel]:03d}PULK!")
                 time.sleep(0.01)
 
     def stop_motion(self) -> None:
-        home = RuntimeSettings.load(self.config.runtime_config).homing(self.calibration)
+        motion = self._active_motion_settings or RuntimeSettings.load(self.config.runtime_config).leader_motion()
+        indices = self._channels(self._motion_channels)
         with self._io_lock:
-            for servo in self.calibration.servo_ids:
-                self._write(home['stop_command'].format(id=servo))
+            for channel in indices:
+                self._write(motion['stop_command'].format(id=self.calibration.servo_ids[channel]))
         self._homing_active = False
+        self._active_motion_settings = None
+        self._motion_channels = None
 
     def move_home(self, poll=None) -> None:
         home = RuntimeSettings.load(self.config.runtime_config).homing(self.calibration)
+        self.move_raw(dict(enumerate(home['raw'])), poll=poll)
+
+    def move_raw(self, targets, poll=None) -> dict:
+        """Move selected channels to validated raw positions, retaining torque on arrival."""
+        targets = dict(targets)
+        indices = self._channels(targets)
+        for channel, target in targets.items():
+            if type(target) is not int or not self.calibration.raw_min[channel] <= target <= self.calibration.raw_max[channel]:
+                raise ValueError(f'主臂通道 {channel} 的目标超出编码器范围或不是整数')
+        motion = RuntimeSettings.load(self.config.runtime_config).leader_motion()
         sample = self.read_once()
-        duration = home['duration_ms']
-        if any(abs(target-current)/(duration/1000) > home['max_speed_raw_s']
-               for target, current in zip(home['raw'], sample.raw)):
-            raise ValueError("主臂回位距离超过设定速度，请增加 duration_ms 或人工调整起点")
+        duration = motion['duration_ms']
+        required_speed = max(abs(targets[i] - sample.raw[i]) / (duration / 1000) for i in indices)
+        if required_speed > motion['max_speed_raw_s']:
+            raise ValueError(f"主臂目标需要 {required_speed:.1f} raw/s，超过 {motion['max_speed_raw_s']:g} raw/s；请增加 duration_ms 或人工调整起点")
         self._homing_active = True
+        self._motion_channels = indices
+        self._active_motion_settings = motion
         try:
             with self._io_lock:
-                # The verified position command must re-enable holding at the
-                # requested position, without first returning to an old target.
-                for servo, current in zip(self.calibration.servo_ids, sample.raw):
-                    self._write(home['position_command'].format(id=servo, position=current, duration=duration))
-                for servo, target in zip(self.calibration.servo_ids, home['raw']):
-                    self._write(home['position_command'].format(id=servo, position=target, duration=duration))
+                # Re-enable holding at current readings before sending the target.
+                # Unmapped channels (such as the gripper) receive no commands.
+                for i in indices:
+                    self._write(motion['position_command'].format(id=self.calibration.servo_ids[i], position=sample.raw[i], duration=duration))
+                for i in indices:
+                    self._write(motion['position_command'].format(id=self.calibration.servo_ids[i], position=targets[i], duration=duration))
             started = time.monotonic()
             stable = 0
             previous_stamp = None
-            while time.monotonic()-started < home['timeout_s']:
+            while time.monotonic() - started < motion['timeout_s']:
                 if poll is not None:
                     poll()
                 sample = self.latest()
                 if sample.timestamp_ns != previous_stamp:
-                    stable = stable+1 if all(abs(a-b) <= home['tolerance_raw'] for a,b in zip(sample.raw, home['raw'])) else 0
+                    stable = stable + 1 if all(abs(sample.raw[i] - targets[i]) <= motion['tolerance_raw'] for i in indices) else 0
                     previous_stamp = sample.timestamp_ns
-                if stable >= 3 and time.monotonic()-started >= duration/1000:
+                if stable >= 3 and time.monotonic() - started >= duration / 1000:
                     self._homing_active = False
-                    return
+                    self._active_motion_settings = None
+                    self._motion_channels = None
+                    return motion
                 time.sleep(0.02)
-            raise TimeoutError("主臂回位未在规定时间内到位")
+            raise TimeoutError('主臂未在规定时间内到达目标位置')
         except BaseException:
             self.stop_motion()
             raise

@@ -104,18 +104,11 @@ class RuntimeSettings:
             raise ValueError('运行配置 version 必须为 1')
         return cls(document)
 
-    def homing(self, calibration) -> dict:
-        """Return explicitly verified leader motion parameters; never infer servo commands."""
+    def leader_motion(self) -> dict:
+        """Validate position/stop commands without requiring a saved home pose."""
         home = dict(self.document.get("homing", {}))
         if home.get("verified") is not True:
             raise ValueError("请先核对运行配置 homing 的主臂回位/停止协议，并设置 verified=true")
-        raw = calibration.document.get("home_raw") or calibration.document.get("zero_raw")
-        home["raw"] = raw
-        if not isinstance(raw, list) or len(raw) != len(calibration.servo_ids):
-            raise ValueError("homing.raw 必须按 servo_ids 顺序包含全部主臂初始位置")
-        for value, lo, hi in zip(raw, calibration.raw_min, calibration.raw_max):
-            if type(value) is not int or not lo <= value <= hi:
-                raise ValueError("homing.raw 超出标定范围或不是整数")
         for key in ("duration_ms", "tolerance_raw", "timeout_s", "max_speed_raw_s"):
             value = home.get(key)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
@@ -134,6 +127,18 @@ class RuntimeSettings:
             rendered = template.format(id=0, position=1500, duration=3000)
             if not rendered or len(rendered) > 128:
                 raise ValueError(f"homing.{key} 长度无效")
+        return home
+
+
+    def homing(self, calibration) -> dict:
+        home = self.leader_motion()
+        raw = calibration.document.get("home_raw") or calibration.document.get("zero_raw")
+        home["raw"] = raw
+        if not isinstance(raw, list) or len(raw) != len(calibration.servo_ids):
+            raise ValueError("homing.raw 必须按 servo_ids 顺序包含全部主臂初始位置")
+        for value, lo, hi in zip(raw, calibration.raw_min, calibration.raw_max):
+            if type(value) is not int or not lo <= value <= hi:
+                raise ValueError("homing.raw 超出标定范围或不是整数")
         return home
 
 
