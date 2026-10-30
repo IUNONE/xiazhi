@@ -37,7 +37,6 @@ python scripts/arm_joints.py --arm leader --pose reference
 python scripts/arm_joints.py --arm follower --pose zero
 ```
 
-配置职责：`zhongling_eco63.example.json` 只保存舵机 ID、关节通道、原始读数范围和角度换算参数；主臂实物零位与方向由 1.1 的 `uarm.model.calibrated.json` 保存；主从 URDF 的 offset 与方向关系由 1.2 的 `leader_follower.mapping.json` 保存。`--leader-config` 的使用方式不变，已有标定无需因本次设备配置清理而重做。
 
 ## 1.1 标定主臂零位和正方向
 
@@ -69,7 +68,7 @@ python scripts/inspect_leader.py \
 ```
 
 
-## 1.2 离线配置主从 URDF 的绝对映射
+## 1.2 主从映射配置
 
 
 ```bash
