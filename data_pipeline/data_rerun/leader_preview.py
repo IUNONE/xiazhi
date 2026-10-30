@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import socket
 import subprocess
 import tempfile
@@ -14,6 +15,21 @@ import numpy as np
 from data_pipeline.data_rerun.robot_model import build_robot_urdf
 
 LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2/uarm_config2_leader.urdf"
+_PROXY_ENV = (
+    "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
+    "SOCKS_PROXY", "socks_proxy", "GIT_HTTP_PROXY", "GIT_HTTPS_PROXY",
+)
+
+
+def _viewer_env():
+    """Drop inherited proxy variables. Rerun's HTTP client warns on every mesh when they are set."""
+    env = os.environ.copy()
+    for key in _PROXY_ENV:
+        env.pop(key, None)
+    env["NO_PROXY"] = "*"
+    env["no_proxy"] = "*"
+    env["RUST_LOG"] = "warn,ureq=error,re_perf_telemetry=error,re_grpc_server=error"
+    return env
 
 
 class LeaderPreview:
@@ -76,7 +92,7 @@ class LeaderPreview:
             self.viewer = subprocess.Popen([
                 'rerun', '--port', str(port), '--bind', '127.0.0.1',
                 '--memory-limit', memory_limit, '--server-memory-limit', '256MiB',
-            ])
+            ], env=_viewer_env())
             deadline = time.monotonic() + 15
             while True:
                 if self.viewer.poll() is not None:
