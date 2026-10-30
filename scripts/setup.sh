@@ -405,11 +405,17 @@ try:
 except importlib.metadata.PackageNotFoundError:
     sys.exit(1)
 parts = version.split(".")
-sys.exit(0 if len(parts) >= 2 and parts[0] == "0" and parts[1] == "33" else 1)' || return 1
+if parts[:2] != ["0", "33"]:
+    sys.exit(1)
+import numpy, matplotlib
+numpy_version = tuple(map(int, numpy.__version__.split(".")[:2]))
+matplotlib_version = tuple(map(int, matplotlib.__version__.split(".")[:2]))
+sys.exit(0 if (2, 0) <= numpy_version < (2, 3) and (3, 9) <= matplotlib_version < (4, 0) else 1)' || return 1
 }
 install_10() {
     /usr/bin/python3 -m venv --system-site-packages "$ROOT/.venv"
-    "$ROOT/.venv/bin/python" -m pip install 'rerun-sdk>=0.33.0,<0.34.0'
+    # Install a NumPy 2-compatible Matplotlib in the venv instead of using Ubuntu's build.
+    "$ROOT/.venv/bin/python" -m pip install 'rerun-sdk>=0.33.0,<0.34.0' 'numpy>=2.0,<2.3' 'matplotlib>=3.9,<4'
 }
 for ((CURRENT_STEP=FROM_STEP;CURRENT_STEP<=TO_STEP;CURRENT_STEP++)); do
     checkpoint "$CURRENT_STEP"
