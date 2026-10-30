@@ -20,24 +20,18 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 ```
 
-### 可选：用滑块选择模型零位/标定位
+### 可选：调整模型零位/标定位
 
 ```bash
 python scripts/adjust_leader_zero.py \
   --output configs/teleoperation/uarm.desired-zero.json \
   --overwrite
-```
-
-保存的 json 文件用于记录相对于当前 URDF 的六轴角供后续修改 URDF 零位使用。重新打开同一姿态：
-
-```bash
-python scripts/adjust_leader_zero.py \
-  --input configs/teleoperation/uarm.desired-zero.json
+# --input configs/teleoperation/uarm.desired-zero.json
 ```
 
 ## 1.1 Rerun 标定主臂零位和正方向
 
-本步骤读取实物编码器，标定其与当前 U-Arm URDF 的对应关系。主臂已卸力，程序不发送卸力或运动命令。采样期间 Rerun 固定显示参考姿态，实物运动不会改变画面；完成后再恢复实物驱动模型。
+根据终端和 rerun 画面提示，将 主臂依次摆到 零位 和 标定位。
 
 ```bash
 python scripts/inspect_leader.py \
@@ -49,19 +43,7 @@ python scripts/inspect_leader.py \
   --viewer
 ```
 
-依次完成三次确认（直接按 `y`，无需 Enter）：
 
-1. Rerun 显示当前 URDF 的零位 `[0,0,0,0,0,0]`。参考画面尽量准确摆好实物 U-Arm，保持静止，按 `y` 记录六轴零位。
-2. Rerun 显示标定位 `[90,90,-90,0,0,90]`。将 joint 1、2、3、6 从已记录零位沿画面所示方向明显转动，不需要精确到 90° 或 −90°。保持静止，按 `y` 记录方向；joint 3 的示例为负方向，程序会据此换算正方向。
-3. Rerun 显示补充标定位 `[0,0,0,30,30,0]`。将 joint 4、5 从已记录零位向画面中的正方向转动，不需要精确到 30°，静止后按 `y` 记录方向。其余关节可参考画面回到零位，不参与本次方向计算。
-
-joint 4、5 在前两组姿态中都为 0°，不能由两次读数推算其方向，所以需要第三次采样。角度均相对于当前 URDF 零位：此前设置的 joint 1=-10°、joint 2=+55°、joint 3=-150° 已体现在 URDF 中，不需要在命令中重复叠加。
-
-只有第一次零位需要尽量准确。第二、三次的参考角度只是方向示例，程序只比较相对零位的读数增减与示例角度的正负号，不用示例角度拟合比例。角度换算始终沿用设备配置的 `raw_min`、`raw_max` 和 `angle_range_deg`，新标定文件的额外比例固定为 1。保存后恢复实时跟随。文件包含 URDF 校验值；改动 URDF 后需要重新标定。输出文件已存在时不会覆盖，请改用新文件名。
-
-零位采样检查六个机械臂关节，不包括夹爪；第二次只检查 joint 1、2、3、6，第三次只检查 joint 4、5。读数不稳定或参考读数变化不足时提示重试当前姿态；按 `q` 或 Ctrl-C 退出，未完成时不保存部分结果。Rerun 提示使用英文，终端提示使用中文。
-
-预览标定结果：
 
 ```bash
 python scripts/inspect_leader.py \
