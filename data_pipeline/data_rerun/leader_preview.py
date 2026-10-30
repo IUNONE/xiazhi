@@ -85,13 +85,13 @@ class LeaderPreview:
             self.joints = self._revolute_joints(self.follower, joint_names)
             self.leader_joints = self._revolute_joints(self.leader, joint_names)
             scene = rrb.Spatial3DView(
-                name='主臂与从臂', origin='/', contents=['/follower/**', '/leader/**', '/world/**'],
+                name='Leader and Follower', origin='/', contents=['/follower/**', '/leader/**', '/world/**'],
                 spatial_information=rrb.SpatialInformation(target_frame='world'),
                 eye_controls=rrb.EyeControls3D(position=(1.4, -1.1, 1.0), look_target=(0.15, 0.275, 0.3), eye_up=(0, 0, 1)),
             )
             blueprint = rrb.Blueprint(
                 rrb.Vertical(
-                    rrb.TextDocumentView(name='状态', origin='/status'),
+                    rrb.TextDocumentView(name='Status', origin='/status'),
                     rrb.Horizontal(scene, rrb.Grid(*[
                         rrb.TimeSeriesView(name=f'{name} (rad)', contents=[f'/joints/{name}', f'/leader_joints/{name}'])
                         for name in joint_names
@@ -168,7 +168,7 @@ class LeaderPreview:
     def is_open(self):
         return self.viewer is not None and self.viewer.poll() is None
 
-    def update(self, sample, target_deg=None, message=None, leader_target_deg=None):
+    def update(self, sample, target_deg=None, message=None):
         if sample.timestamp_ns == self.last_timestamp:
             return
         angles = np.asarray(sample.positions, dtype=float)[self.indices]
@@ -180,8 +180,6 @@ class LeaderPreview:
         relative = angles - self.reference
         live = (self.model_calibration.joint_positions(sample.positions)
                 if self.model_calibration is not None else relative)
-        if leader_target_deg is not None:
-            live = np.deg2rad(leader_target_deg)
         if target_deg is not None:
             follower = np.deg2rad(target_deg)
         elif self.calibration.document.get('zero_raw') is not None:
@@ -201,15 +199,15 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(live[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or '原点是 ECO63 从臂。Y 正方向 0.55 m 处是 U-Arm Config 2 底座，显示放大 3 倍，底座最低点位于地面，零位为 CAD 装配姿态。不连接真实从臂。'
+        status = message or 'ECO63 is at the origin. The U-Arm Config 2 base is at Y=0.55 m, displayed at 3x scale with its base on the ground. Model zero is the CAD assembly pose. No physical follower is connected.'
         if target_deg is not None:
-            status += '\n从臂保持在目标姿态，主臂网格跟随相对启动时的读数变化。'
+            status += '\nThe follower holds the reference pose. The leader follows encoder readings.'
         elif self.calibration.document.get('zero_raw') is None:
-            status += '\n尚未标定：从臂显示启动后的相对变化。'
-        if self.model_calibration is None and leader_target_deg is None:
-            status += '\n主臂模型未标定：当前启动姿态暂作 CAD 零位。用 --calibrate-model 逐关节标定。'
+            status += '\nFollower mapping is not calibrated: showing changes relative to startup.'
+        if self.model_calibration is None:
+            status += '\nLeader model is not calibrated: startup pose is temporarily treated as CAD zero. Use --calibrate-model to calibrate each joint.'
         if outside:
-            status += '\n超出 URDF 限位：' + ', '.join(outside)
+            status += '\nOutside URDF limits: ' + ', '.join(outside)
         if status != self.last_status:
             self.recording.log('/status', self.rr.TextDocument(status))
             self.last_status = status

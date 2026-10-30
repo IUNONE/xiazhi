@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -63,3 +64,29 @@ class LeaderModelCalibration:
 
     def joint_positions(self, positions):
         return self.direction * (np.asarray(positions)[self.indices] - self.zero_angles)
+
+
+def sample_stable_raw(read, channels, servo_ids, poll_interval, *, duration=0.8, timeout=3.0):
+    """Require fresh scans, checking only the channels being calibrated."""
+    channels = list(channels)
+    started = time.monotonic()
+    # Do not count the cached scan that preceded the confirmation key.
+    baseline = read().timestamp_ns
+    seen, samples = set(), []
+    while time.monotonic() - started < timeout:
+        sample = read()
+        if sample.timestamp_ns > baseline and sample.timestamp_ns not in seen:
+            seen.add(sample.timestamp_ns)
+            samples.append(sample.raw)
+        if len(samples) >= 3 and time.monotonic() - started >= duration:
+            break
+        time.sleep(poll_interval)
+    if len(samples) < 3:
+        raise ValueError(f'新样本不足：{timeout:g} 秒内仅收到 {len(samples)} 个新扫描（至少需要 3 个）；请检查串口读取频率')
+    values = np.asarray(samples)
+    spread = np.ptp(values[:, channels], axis=0)
+    unstable = [f'通道 {channel} / 舵机 {servo_ids[channel]} 波动 {change:g} raw'
+                for channel, change in zip(channels, spread) if change > 10]
+    if unstable:
+        raise ValueError('当前标定关节读数不稳定：' + '；'.join(unstable) + '（允许最多 10 raw）')
+    return np.median(values, axis=0)

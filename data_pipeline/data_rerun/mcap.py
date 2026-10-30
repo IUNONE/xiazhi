@@ -318,7 +318,7 @@ class McapRerunVisualizer:
         recording.send_blueprint(blueprint)
         recording.log(
             "/__xiazhi/instruction",
-            rr.TextDocument(self.instruction or "未提供任务说明"),
+            rr.TextDocument(self.instruction or "No task instruction provided"),
             static=True,
         )
 
