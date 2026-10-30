@@ -15,16 +15,18 @@ import numpy as np
 from data_pipeline.data_rerun.robot_model import build_robot_urdf
 
 LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2/uarm_config2_leader.urdf"
-# CAD base face normal becomes world +Z; its horizontal edge becomes +X.
-# Rows are orthonormal CAD axes measured from fixed base STL faces.
-# Rotate the entire tree, including all joint frames.
+# The large mounting face of base_gen (not the narrow sitter side faces)
+# must face down. Its CAD outward normal is approximately
+# (+0.36959, -0.92830, -0.04067), mapped here to world -Z.
+# Relative to the former side-face alignment, rotate +90 degrees about X.
+# Apply at the root so every mesh and joint frame rotates together.
 LEADER_BASE_ROTATION = np.array([
     [0.9291949300533162, 0.369258404421656, 0.015652882392246596],
+    [-0.0004886500491315925, 0.043579403244319484, -0.9990498470216581],
     [-0.3695896957226246, 0.9283044039413159, 0.0406741986868336],
-    [0.0004886500491315925, -0.043579403244319484, 0.9990498470216581],
 ])
 # Bounds center in XY and minimum Z of all four fixed meshes AFTER rotation.
-LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, 0.13785461667827545, 0.026392458186143327])
+LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, -0.08889246692740739, 0.07760459952730553])
 LEADER_BASE_POSITION = (0.0, 0.55, 0.0)
 _PROXY_ENV = (
     "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
