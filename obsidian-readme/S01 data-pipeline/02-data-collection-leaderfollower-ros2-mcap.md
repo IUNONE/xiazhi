@@ -20,13 +20,24 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 ```
 
-### 可选：调整模型零位/标定位
+### 可选：统一调整主臂／从臂的零位和标定位
+
 
 ```bash
-python scripts/adjust_leader_zero.py \
-  --output configs/teleoperation/uarm.desired-zero.json \
-  --overwrite
-# --input configs/teleoperation/uarm.desired-zero.json
+# U-Arm 主臂零位, 初始 [0,0,0,0,0,0]
+# configs/teleoperation/leader.zero.json
+python scripts/arm_joints.py --arm leader --pose zero
+
+# U-Arm 主臂标定位, [90,90,-90,0,0,90]
+# configs/teleoperation/leader.reference.json
+python scripts/arm_joints.py --arm leader --pose reference
+
+# ECO63 从臂零位, [0,0,0,0,0,0]
+# configs/teleoperation/follower.zero.json
+python scripts/arm_joints.py --arm follower --pose zero
+
+# ECO63 从臂标定位
+python scripts/arm_joints.py --arm follower --pose reference
 ```
 
 ## 1.1 Rerun 标定主臂零位和正方向
@@ -55,13 +66,7 @@ python scripts/inspect_leader.py \
 
 ## 1.2 检查 eco63 零位正方向
 
-先确认 ECO63 的关节编号、零位定义和正方向，再进行主从映射。U-Arm 的 CAD 零位不等于 ECO63 的零位；1.1 保存的模型标定文件不能用作从臂控制标定。
 
-1. 对照 ECO63 的机械臂说明和示教器关节读数，确认 `joint1`～`joint6` 与实物各轴一一对应。
-2. 确认各关节零角度对应的连杆姿态，并核对正角度增加时的实际旋转方向。需要实机点动核对时，通过示教器逐轴小幅操作，记录结果。
-3. 确定下一步用于主从映射的两组已知关节角。示例使用全 0° 和全 +30°，应按实际可用姿态替换；两组角度的每一轴至少相差 5°。
-
-`inspect_leader.py` 只读取 U-Arm 并显示虚拟 ECO63，不连接或驱动真实 ECO63，也不能自动确认实机零位。下一步 Viewer 显示的从臂目标姿态仅用于核对映射，不能替代示教器读数。若实机与 ECO63 模型的轴向或零位定义不一致，应先查清原因再进行映射。
 
 ## 1.3 标定主臂从臂正方向
 
