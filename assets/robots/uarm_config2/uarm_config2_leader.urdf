@@ -1,101 +1,148 @@
-<?xml version="1.0"?>
+<?xml version='1.0' encoding='utf-8'?>
 <robot name="uarm_config2_leader">
+  <!-- Joint axes reconstructed from circular features in the bundled assembled
+       STL meshes (meters), not from the ECO63 joint axes. All joint frames keep
+       the CAD orientation at q=0; each visual offset cancels its cumulative
+       joint translation. See tests/test_leader_model.py for mesh-based checks.
+       Axis signs still require verification against the physical encoders. -->
   <link name="base_link">
     <visual>
-      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/base_gen.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/sitter_1.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/sitter_2.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/sitter_mid.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/base_gen.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/sitter_1.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/sitter_2.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/sitter_mid.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint1" type="revolute">
-    <origin xyz="0.114500 0.201100 0.125600" rpy="0 0 0"/>
-    <parent link="base_link"/>
-    <child link="link1"/>
-    <axis xyz="0.000000 0.000000 1.000000"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="0.1207304713 0.2031548637 0.1353154913" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="link1" />
+    <axis xyz="0.3695929294 -0.9283029711 -0.0406775179" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link1">
     <visual>
-      <origin xyz="-0.114500 -0.201100 -0.125600" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/link_1.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.1207304713 -0.2031548637 -0.1353154913" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/link_1.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint2" type="revolute">
-    <origin xyz="0.015100 0.048800 0.014900" rpy="0 0 0"/>
-    <parent link="link1"/>
-    <child link="link2"/>
-    <axis xyz="0.615551 0.764790 0.190244"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="0.0033769596 0.0532948105 -0.0088079311" rpy="0 0 0" />
+    <parent link="link1" />
+    <child link="link2" />
+    <axis xyz="0.9104260564 0.3705284163 -0.1839377299" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link2">
     <visual>
-      <origin xyz="-0.129600 -0.249900 -0.140500" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/l2j2.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.1241074309 -0.2564496742 -0.1265075601" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/l2j2.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint3" type="revolute">
-    <origin xyz="-0.052300 0.070900 -0.115800" rpy="0 0 0"/>
-    <parent link="link2"/>
-    <child link="link3"/>
-    <axis xyz="0.615551 0.764790 0.190244"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="-0.0516695545 0.0745506831 -0.1053254329" rpy="0 0 0" />
+    <parent link="link2" />
+    <child link="link3" />
+    <axis xyz="0.9104257971 0.3705305088 -0.1839347981" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link3">
     <visual>
-      <origin xyz="-0.077300 -0.320800 -0.024700" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/joint3.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="-0.077300 -0.320800 -0.024700" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/joint3_support.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.0724378764 -0.3310003573 -0.0211821273" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/joint3.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.0724378764 -0.3310003573 -0.0211821273" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/joint3_support.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint4" type="revolute">
-    <origin xyz="-0.053200 0.026600 0.065200" rpy="0 0 0"/>
-    <parent link="link3"/>
-    <child link="link4"/>
-    <axis xyz="0.615551 0.764790 0.190244"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="-0.0489368402 0.0226440259 0.0783323102" rpy="0 0 0" />
+    <parent link="link3" />
+    <child link="link4" />
+    <axis xyz="0.9104241205 0.3705338696 -0.1839363266" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link4">
     <visual>
-      <origin xyz="-0.024100 -0.347400 -0.089900" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/joint4.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="-0.024100 -0.347400 -0.089900" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/joint4_support.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.0235010361 -0.3536443832 -0.0995144375" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/joint4.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.0235010361 -0.3536443832 -0.0995144375" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/joint4_support.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint5" type="revolute">
-    <origin xyz="0.048600 -0.002600 0.065200" rpy="0 0 0"/>
-    <parent link="link4"/>
-    <child link="link5"/>
-    <axis xyz="0.678176 -0.637002 0.366478"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="0.0407671249 -0.0023330755 0.0580462147" rpy="0 0 0" />
+    <parent link="link4" />
+    <child link="link5" />
+    <axis xyz="0.2263241889 -0.0739567991 0.9712403170" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link5">
     <visual>
-      <origin xyz="-0.072700 -0.344800 -0.155100" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/link3.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.0642681610 -0.3513113076 -0.1575606522" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/link3.stl" />
+      </geometry>
+    </visual>
+  </link>
   <joint name="joint6" type="revolute">
-    <origin xyz="-0.010700 0.023300 0.060300" rpy="0 0 0"/>
-    <parent link="link5"/>
-    <child link="link6"/>
-    <axis xyz="0.233403 -0.495747 0.836515"/>
-    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+    <origin xyz="0.0022162481 0.0173025380 0.0675447238" rpy="0 0 0" />
+    <parent link="link5" />
+    <child link="link6" />
+    <axis xyz="-0.4831945686 0.8572534066 0.1778752532" />
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link6">
     <visual>
-      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/handle_mix.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/handle_1.stl"/></geometry>
-    </visual>    <visual>
-      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
-      <geometry><mesh filename="meshes/trigger.stl"/></geometry>
-    </visual>  </link>
+      <origin xyz="-0.0664844091 -0.3686138456 -0.2251053759" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/handle_mix.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.0664844091 -0.3686138456 -0.2251053759" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/handle_1.stl" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.0664844091 -0.3686138456 -0.2251053759" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/trigger.stl" />
+      </geometry>
+    </visual>
+  </link>
 </robot>

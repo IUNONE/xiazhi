@@ -28,6 +28,7 @@ LEADER_BASE_ROTATION = np.array([
 # Bounds center in XY and minimum Z of all four fixed meshes AFTER rotation.
 LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, -0.08889246692740739, 0.07760459952730553])
 LEADER_BASE_POSITION = (0.0, 0.55, 0.0)
+LEADER_DISPLAY_SCALE = 3.0
 _PROXY_ENV = (
     "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
     "SOCKS_PROXY", "socks_proxy", "GIT_HTTP_PROXY", "GIT_HTTPS_PROXY",
@@ -127,8 +128,8 @@ class LeaderPreview:
             self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
             self._log_base(
                 'leader', self.leader.root_link().name,
-                np.asarray(LEADER_BASE_POSITION) - LEADER_BASE_ROTATED_ANCHOR,
-                rotation=LEADER_BASE_ROTATION,
+                np.asarray(LEADER_BASE_POSITION) - LEADER_DISPLAY_SCALE * LEADER_BASE_ROTATED_ANCHOR,
+                rotation=LEADER_DISPLAY_SCALE * LEADER_BASE_ROTATION,
             )
         except BaseException:
             self.close()
@@ -196,7 +197,7 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(angles[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or '原点是 ECO63 从臂。Y 正方向 0.55 m 处是 U-Arm Config 2 底座，底座最低点位于地面，零位为 CAD 装配姿态。不连接真实从臂。'
+        status = message or '原点是 ECO63 从臂。Y 正方向 0.55 m 处是 U-Arm Config 2 底座，显示放大 3 倍，底座最低点位于地面，零位为 CAD 装配姿态。不连接真实从臂。'
         if target_deg is not None:
             status += '\n从臂保持在目标姿态，主臂网格跟随相对启动时的读数变化。'
         elif self.calibration.document.get('zero_raw') is None:
