@@ -85,7 +85,9 @@ def main() -> None:
     parser.add_argument("--replay-post-roll-s", type=float, default=0.5)
     parser.add_argument("--teaching-mode", choices=["drag", "leader-follower"], default="drag")
     parser.add_argument("--leader-port")
-    parser.add_argument("--leader-calibration", type=Path)
+    parser.add_argument("--leader-config", type=Path, help="主臂编码器设备配置")
+    parser.add_argument("--leader-model-calibration", type=Path, help="1.1 主臂实物到 URDF 的标定")
+    parser.add_argument("--leader-follower-mapping", type=Path, help="1.2 离线主从绝对映射")
     parser.add_argument("--teleop-config", type=Path, help="独立运行配置；默认 configs/teleoperation/eco63_runtime.json")
     parser.add_argument("--leader-baudrate", type=int, default=115200)
     parser.add_argument("--control-hz", type=float, default=30)
@@ -94,11 +96,12 @@ def main() -> None:
     args = parser.parse_args()
     leader = None
     if args.teaching_mode == "leader-follower":
-        if not args.leader_port or args.leader_calibration is None:
-            parser.error("leader-follower 需要 --leader-port 和 --leader-calibration")
-        leader = LeaderConfig(args.leader_port, args.leader_calibration, args.leader_baudrate,
-                              args.control_hz, args.leader_stale_after_s, args.teleop_config)
-    elif args.leader_port or args.leader_calibration or args.unlock_leader or args.teleop_config:
+        if not args.leader_port or any(value is None for value in (args.leader_config, args.leader_model_calibration, args.leader_follower_mapping)):
+            parser.error("leader-follower 需要 --leader-port、--leader-config、--leader-model-calibration 和 --leader-follower-mapping")
+        leader = LeaderConfig(args.leader_port, args.leader_config, args.leader_baudrate,
+                              args.control_hz, args.leader_stale_after_s, args.teleop_config,
+                              args.leader_model_calibration, args.leader_follower_mapping)
+    elif args.leader_port or args.leader_config or args.leader_model_calibration or args.leader_follower_mapping or args.unlock_leader or args.teleop_config:
         parser.error("主臂参数需要 --teaching-mode leader-follower")
 
     cameras = tuple(

@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from data_pipeline.data_collection.hardware.zhongling import ZhonglingLeader
 from data_pipeline.data_collection.io_utils.command_log import CommandLog
-from data_pipeline.data_collection.teleoperation.config import Calibration, RuntimeSettings
+from data_pipeline.data_collection.teleoperation.config import RuntimeSettings
 from data_pipeline.data_collection.teleoperation.controller import TeleoperationController
 
 
@@ -34,7 +34,8 @@ class _CommandSink:
 
 def collect_ros_session(collector, path, manifest, keys):
     config = collector.config
-    calibration = Calibration.load(config.leader.calibration)
+    from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
+    calibration = load_absolute_calibration(config.leader)
     runtime = RuntimeSettings.load(config.leader.runtime_config)
     runtime.homing(calibration)
     limits = runtime.follower_limits()
@@ -152,11 +153,11 @@ def collect_ros_session(collector, path, manifest, keys):
                 journal = CommandLog(path / 'teleoperation' / f'episode_{index:06d}.jsonl')
                 sink.attach(journal)
                 if controller is None:
-                    reference = leader.read_once()
+                    leader.read_once()
                     leader.release_torque()
                     leader.read_once()
                     controller = TeleoperationController(collector._arm, leader, config.leader, calibration, limits, sink)
-                    controller.start(reference=reference)
+                    controller.start()
                 ready = False
                 print(f'episode {index:06d} 录制中；按 s 保存并继续跟随。', flush=True)
             elif key == 's':

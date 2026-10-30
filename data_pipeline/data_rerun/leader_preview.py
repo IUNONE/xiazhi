@@ -56,7 +56,7 @@ def _viewer_env():
 
 
 class LeaderPreview:
-    def __init__(self, calibration, robot_xacro: Path, joint_names, memory_limit: str, model_calibration=None):
+    def __init__(self, calibration, robot_xacro: Path, joint_names, memory_limit: str, model_calibration=None, mapping=None):
         import rerun as rr
         import rerun.blueprint as rrb
         from rerun.urdf import UrdfTree
@@ -69,8 +69,8 @@ class LeaderPreview:
         self.rr = rr
         self.calibration = calibration
         self.model_calibration = model_calibration
+        self.mapping = mapping
         self.indices = list(calibration.joint_indices)
-        self.reference = None
         self.t0 = None
         self.last_timestamp = None
         self.last_display = None
@@ -186,23 +186,18 @@ class LeaderPreview:
                        None if leader_target_deg is None else tuple(leader_target_deg), message)
         if sample.timestamp_ns == self.last_timestamp and display_key == self.last_display:
             return
-        angles = np.asarray(sample.positions, dtype=float)[self.indices]
-        if self.reference is None:
-            # Match teleoperation's relative engagement, without moving hardware.
-            self.reference = angles.copy()
+        if self.t0 is None:
             self.t0 = sample.timestamp_ns
-        # Model zero/direction belong to the U-Arm, not the ECO63 mapping.
-        relative = angles - self.reference
         live = (self.model_calibration.joint_positions(sample.positions)
-                if self.model_calibration is not None else relative)
+                if self.model_calibration is not None else np.zeros(6))
         if leader_target_deg is not None:
             live = np.deg2rad(leader_target_deg)
         if target_deg is not None:
             follower = np.deg2rad(target_deg)
-        elif self.calibration.document.get('zero_raw') is not None:
-            follower = self.calibration.joint_positions(sample.positions)
+        elif self.mapping is not None:
+            follower = self.mapping.apply(live)
         else:
-            follower = np.asarray(self.calibration.direction)*self.calibration.scale*relative
+            follower = np.zeros(6)
         if not np.isfinite(live).all() or not np.isfinite(follower).all():
             raise ValueError('虚拟关节目标包含非有限数值')
         self.recording.set_time('leader_time', duration=(sample.timestamp_ns-self.t0)/1e9)
@@ -221,10 +216,10 @@ class LeaderPreview:
             status += '\nReference display only: physical U-Arm tracking is disabled during calibration.'
         elif target_deg is not None:
             status += '\nThe follower holds the reference pose. The leader follows encoder readings.'
-        elif self.calibration.document.get('zero_raw') is None:
-            status += '\nFollower mapping is not calibrated: showing changes relative to startup.'
+        elif self.mapping is None:
+            status += '\nNo absolute mapping loaded: follower stays at URDF zero.'
         if self.model_calibration is None and leader_target_deg is None:
-            status += '\nLeader model is not calibrated: startup pose is temporarily treated as URDF zero. Use --calibrate-model to calibrate zero positions and directions.'
+            status += '\nNo leader calibration loaded: leader stays at URDF zero. Use --calibrate-model to calibrate zero positions and directions.'
         if outside:
             status += '\nOutside URDF limits: ' + ', '.join(outside)
         if status != self.last_status:

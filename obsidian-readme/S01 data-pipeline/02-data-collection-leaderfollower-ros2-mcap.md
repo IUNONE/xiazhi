@@ -35,12 +35,9 @@ python scripts/arm_joints.py --arm leader --pose reference
 # ECO63 从臂零位, [0,0,0,0,0,0]
 # configs/teleoperation/follower.zero.json
 python scripts/arm_joints.py --arm follower --pose zero
-
-# ECO63 从臂标定位
-python scripts/arm_joints.py --arm follower --pose reference
 ```
 
-## 1.1 Rerun 标定主臂零位和正方向
+## 1.1 标定主臂零位和正方向
 
 根据终端和 rerun 画面提示，将 主臂依次摆到 零位 和 标定位。
 
@@ -55,6 +52,11 @@ python scripts/inspect_leader.py \
 	--overwrite
 ```
 
+默认零位：
+
+![主臂零位模型与实物对照|265](../assets/zero.png)
+
+检查标定文件，观察初始位置和正方向一致性。
 
 ```bash
 python scripts/inspect_leader.py \
@@ -64,44 +66,29 @@ python scripts/inspect_leader.py \
 	--viewer
 ```
 
-## 1.2 检查 eco63 零位正方向
 
+## 1.2 离线配置主从 URDF 的绝对映射
 
+移动从臂滑块，使从臂处于希望对应主臂零位的姿态
 
-## 1.3 标定主臂从臂正方向
+```bash
+python scripts/arm_joints.py \
+  --calibrate_leader_follwer \
+  --output configs/teleoperation/leader_follower.mapping.json \
+  --overwrite
+```
 
-完成 1.1 的 U-Arm 模型标定和 1.2 的 ECO63 检查后，再进行主从两姿态映射。这里的 `--calibrate` 输出主从映射文件，`--model-calibration-input` 加载已有 U-Arm 模型标定，用于显示主臂自身姿态。
+连接真实主臂检查完整映射：
 
 ```bash
 python scripts/inspect_leader.py \
   --port "/dev/serial/by-id/${LEADER_PORT}" \
   --leader-config configs/teleoperation/zhongling_eco63.example.json \
   --model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
-  --calibrate configs/teleoperation/zp10d_eco63.calibrated.json \
-  --zero-joints='[0,0,0,0,0,0]' \
-  --reference-joints='[30,30,30,30,30,30]' \
+  --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
   --viewer
 ```
 
-按终端提示：
-
-1. 扶稳主臂，按 `t` 卸力（无需 Enter）。
-2. 将主臂摆到希望映射为 `--zero-joints` 的姿态，静止后按 Enter。这里定义的是主从映射基准，不会重写 1.1 的 U-Arm 模型零位。
-3. 将主臂摆到希望映射为 `--reference-joints` 的姿态，静止后按 Enter。程序用这两组读数计算各轴映射方向和比例。
-4. 保存 `zp10d_eco63.calibrated.json` 后，逐轴移动主臂，检查虚拟 ECO63 的变化方向和角度是否符合预期，再用于第 2 节采集。
-
-检查已有模型标定和主从映射：
-
-```bash
-python scripts/inspect_leader.py \
-  --port "/dev/serial/by-id/${LEADER_PORT}" \
-  --leader-config configs/teleoperation/zp10d_eco63.calibrated.json \
-  --model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
-  --unlock-leader \
-  --viewer
-```
-
-两个输出文件分别使用：`uarm.model.calibrated.json` 用于 U-Arm 模型显示，`zp10d_eco63.calibrated.json` 用于主从映射及采集命令的 `--leader-calibration`。标定输出均不覆盖已有文件，重新标定时请指定新文件名并同步后续加载路径。
 
 ## 2. 启动采集
 
@@ -128,7 +115,9 @@ LEADER_PORT=""
   --teaching-mode leader-follower \
   --capture-mode direct \
   --leader-port "/dev/serial/by-id/${LEADER_PORT}" \
-  --leader-calibration configs/teleoperation/zp10d_eco63.calibrated.json \
+  --leader-config configs/teleoperation/zhongling_eco63.example.json \
+  --leader-model-calibration configs/teleoperation/uarm.model.calibrated.json \
+  --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
   --leader-baudrate 115200 \
   --control-hz 30 \
   --init-joints='[0,60,-135,75,90,0]'

@@ -15,7 +15,6 @@ from pathlib import Path
 import numpy as np
 
 from data_pipeline.data_collection.hardware.zhongling import ZhonglingLeader
-from data_pipeline.data_collection.teleoperation.calibration import calibrate_two_poses
 from data_pipeline.data_collection.teleoperation.config import Calibration, LeaderConfig
 from data_pipeline.data_rerun.leader_calibration import LeaderModelCalibration, model_axis_direction, sample_stable_raw
 from data_pipeline.data_rerun.robot_model import DEFAULT_ROBOT_XACRO
@@ -32,21 +31,19 @@ def six_angles(value):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--port', required=True)
-    parser.add_argument('--leader-config', type=Path, required=True, help='输入：U-Arm 设备参数配置；也可读取含这些参数的已有主从映射文件')
+    parser.add_argument('--leader-config', type=Path, required=True, help='输入：U-Arm 设备参数配置（舵机 ID、编码器范围、关节通道）')
     parser.add_argument('--baudrate', type=int, default=115200)
     parser.add_argument('--unlock-leader', action='store_true')
     output = parser.add_mutually_exclusive_group()
     output.add_argument('--save-init', type=Path, help='保存当前主臂 init；覆盖已有文件需 --overwrite')
-    output.add_argument('--calibrate', type=Path, help='两姿态标定输出文件；覆盖已有文件需 --overwrite')
     output.add_argument('--calibrate-model', action='store_true', help='执行 U-Arm 模型固定参考姿态标定（只标零位和方向，不拟合角度比例）；需 --viewer 和 --model-calibration-output')
+    parser.add_argument('--leader-follower-mapping', type=Path, help='加载离线主从绝对映射，仅用于实时预览；需 --model-calibration-input')
     parser.add_argument('--model-reference-joints', type=six_angles, default=(90., 90., -90., 0., 0., 90.), help='U-Arm 方向参考姿态，degree；只使用角度正负号，0° 轴另用 +30° 补充姿态')
     parser.add_argument('--model-calibration-output', type=Path, help='输出：U-Arm 模型标定 JSON；覆盖已有文件需 --overwrite')
     parser.add_argument('--overwrite', action='store_true', help='允许保存时覆盖已有输出文件')
     parser.add_argument('--model-calibration-input', type=Path, help='输入：加载已保存的 U-Arm 模型零位与正方向标定')
-    parser.add_argument('--zero-joints', type=six_angles, default=(0.,)*6, help='零位对应的虚拟关节角，默认全零，degree')
-    parser.add_argument('--reference-joints', type=six_angles, help='标定位对应的已知六关节角，degree；每轴需不同于零位')
     parser.add_argument('--viewer', action='store_true', help='打开 Rerun GPU Viewer：主臂、从臂和六轴曲线')
     parser.add_argument('--viewer-fps', type=float, default=30)
     parser.add_argument('--robot-xacro', type=Path, default=DEFAULT_ROBOT_XACRO)
@@ -54,17 +51,15 @@ def main() -> None:
     args = parser.parse_args()
     if not math.isfinite(args.viewer_fps) or not 1 <= args.viewer_fps <= 120:
         parser.error('viewer-fps 必须在 1..120')
-    if args.calibrate and args.reference_joints is None:
-        parser.error('--calibrate 需要 --reference-joints 指定已知标定位')
-    if args.calibrate and any(abs(a-b) < 5 for a,b in zip(args.zero_joints,args.reference_joints)):
-        parser.error('零位与标定位的每个关节至少需要 5° 差异')
     if args.calibrate_model != (args.model_calibration_output is not None):
         parser.error('--calibrate-model 与 --model-calibration-output 必须一起使用')
     if args.calibrate_model and (not args.viewer or args.model_calibration_input):
         parser.error('--calibrate-model 需要 --viewer，且不能同时指定 --model-calibration-input')
     if args.calibrate_model and any(0 < abs(v) < 5 for v in args.model_reference_joints):
         parser.error('模型标定位每轴需为 0° 或与零位至少相差 5°')
-    destination = args.calibrate or args.save_init or args.model_calibration_output
+    if args.leader_follower_mapping and args.model_calibration_input is None:
+        parser.error('--leader-follower-mapping 需要 --model-calibration-input')
+    destination = args.save_init or args.model_calibration_output
     if destination is not None and destination.exists() and not args.overwrite:
         raise ValueError(f'{destination} already exists, add --overwrite to write')
     if (destination or args.unlock_leader) and not sys.stdin.isatty():
@@ -74,6 +69,14 @@ def main() -> None:
     from data_pipeline.data_rerun.leader_preview import LEADER_URDF
     model_calibration = (LeaderModelCalibration.load(args.model_calibration_input, calibration, LEADER_URDF)
                          if args.model_calibration_input else None)
+    mapping = None
+    if args.leader_follower_mapping:
+        from data_pipeline.data_collection.teleoperation.mapping import JointMapping
+        from data_pipeline.data_rerun.arm_pose import ArmModel
+        mapping = JointMapping.load(
+            args.leader_follower_mapping, ArmModel.load('leader').sha256,
+            ArmModel.load('follower', args.robot_xacro).sha256,
+        )
     preview = None
     target_pose = [0.] * 6 if args.calibrate_model else None
     leader_target_pose = [0.] * 6 if args.calibrate_model else None
@@ -146,16 +149,18 @@ def main() -> None:
     try:
         if args.viewer:
             from data_pipeline.data_rerun.leader_preview import LeaderPreview
-            preview = LeaderPreview(calibration, args.robot_xacro, [f'joint{i}' for i in range(1,7)], args.memory_limit, model_calibration=model_calibration)
+            preview = LeaderPreview(calibration, args.robot_xacro, [f'joint{i}' for i in range(1,7)], args.memory_limit, model_calibration=model_calibration, mapping=mapping)
         leader.connect()
-        if not args.calibrate_model and (args.unlock_leader or args.calibrate):
+        if not args.calibrate_model and args.unlock_leader:
             wait_key('请扶稳主臂，按 t 卸力（无需 Enter）；q 退出。', b't', 'Support the leader arm. Press t to release torque, or q to quit.')
             leader.release_torque()
         if args.calibrate_model:
             print('参考姿态标定：模型固定显示参考姿态，不跟随实物。直接按 y 确认；按 q 退出。', flush=True)
 
+            model_home_raw = None
+
             def capture_pose(pose, label, viewer_label, zero=None, fit_indices=()):
-                nonlocal leader_target_pose
+                nonlocal leader_target_pose, model_home_raw
                 leader_target_pose = list(pose)
                 while True:
                     if zero is None:
@@ -168,7 +173,10 @@ def main() -> None:
                     wait_key(prompt, b'y', viewer_prompt)
                     try:
                         channels = [calibration.joint_indices[i] for i in fit_indices] if zero is not None else calibration.joint_indices
-                        raw = stable_reading(channels)[list(calibration.joint_indices)].tolist()
+                        full_raw = stable_reading(channels)
+                        raw = full_raw[list(calibration.joint_indices)].tolist()
+                        if zero is None:
+                            model_home_raw = full_raw.round().astype(int).tolist()
                         for index in fit_indices:
                             model_axis_direction(calibration, index, zero[index], raw[index], pose[index])
                         return raw
@@ -191,7 +199,7 @@ def main() -> None:
                 for i in missing:
                     reference[i], reference_deg[i] = extra[i], 30.
             model_calibration = LeaderModelCalibration.from_reference_readings(
-                calibration, LEADER_URDF, zero, reference, reference_deg, poses,
+                calibration, LEADER_URDF, zero, reference, reference_deg, poses, home_raw=model_home_raw,
             )
             save(model_calibration.document)
             preview.model_calibration = model_calibration
@@ -199,22 +207,6 @@ def main() -> None:
             target_pose = None
             message = 'Leader model calibration complete. Live tracking restored using saved zero positions and directions. Encoder angle conversion is unchanged. Press Ctrl-C to exit.'
             print('主臂模型零位和方向已保存，角度比例沿用设备配置，已恢复实物驱动模型。Ctrl-C 退出。', flush=True)
-        elif args.calibrate:
-            wait_enter(f'手动摆到零位 {list(args.zero_joints)}°，静止后按 Enter 记录。', f'Move the leader to the pose mapped to {list(args.zero_joints)} deg. Hold still and press Enter to record zero.', args.zero_joints)
-            zero = stable_reading()
-            wait_enter(f'手动摆到标定位 {list(args.reference_joints)}°，静止后按 Enter 记录。', f'Move the leader to the pose mapped to {list(args.reference_joints)} deg. Hold still and press Enter to record the reference.', args.reference_joints)
-            reference = stable_reading()
-            document = calibrate_two_poses(calibration, zero, reference, args.zero_joints, args.reference_joints)
-            save(document)
-            calibration = Calibration.load(destination)
-            leader.calibration = calibration
-            if preview is not None:
-                preview.calibration = calibration
-            target_pose = None
-            message = 'Follower mapping calibration complete. ECO63 shows mapped angles. U-Arm uses its model calibration, or startup-relative angles if none is loaded. Press Ctrl-C to exit.'
-            print('两姿态标定完成，已切换到实时预览。Ctrl-C 退出。', flush=True)
-            if preview is None:
-                return
         elif args.save_init:
             wait_enter('手动摆好主臂 init 姿态，保持稳定后按 Enter 保存。', 'Move the leader to its initial pose. Hold still and press Enter to save.')
             document = dict(calibration.document)

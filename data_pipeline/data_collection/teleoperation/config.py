@@ -19,6 +19,8 @@ class LeaderConfig:
     control_hz: float = 30.0
     stale_after_s: float = 0.3
     runtime_config: Path | None = None
+    model_calibration: Path | None = None
+    mapping: Path | None = None
 
     def validate(self) -> None:
         if not self.port or self.baudrate <= 0:
@@ -27,7 +29,8 @@ class LeaderConfig:
             raise ValueError("低跟随 control_hz 必须在 1..50 Hz")
         if not math.isfinite(self.stale_after_s) or not 0.1 <= self.stale_after_s <= 1:
             raise ValueError("主臂数据有效期必须在 0.1..1 秒")
-        calibration = Calibration.load(self.calibration)
+        from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
+        calibration = load_absolute_calibration(self)
         RuntimeSettings.load(self.runtime_config).homing(calibration)
 
 
@@ -74,7 +77,7 @@ class Calibration:
         if len(expected) != 6 or not all(math.isfinite(v) for v in expected):
             raise ValueError("zero_joints_deg 无效")
         if require_verified and zero is None:
-            raise ValueError("缺少 zero_raw，请先进行两姿态标定")
+            raise ValueError("缺少 zero_raw，请先完成主臂模型标定")
         return cls(*(tuple(d[k]) for k in ('servo_ids','raw_min','raw_max','angle_range_deg','joint_indices','direction','scale')), hashlib.sha256(raw).hexdigest(), d)
 
     def joint_positions(self, positions):

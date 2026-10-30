@@ -35,13 +35,15 @@ class TeleoperationController:
         self._failure = None
         self._heartbeat = time.monotonic()
 
-    def start(self, reference=None) -> None:
+    def start(self) -> None:
         initial = self.arm.read_observation().joint_position.astype(float)
-        reference = self.leader.latest() if reference is None else reference
         c = self.calibration
-        if np.any(initial < self.limits.lower_rad) or np.any(initial > self.limits.upper_rad):
+        if initial.shape != (6,) or not np.isfinite(initial).all() or np.any(initial < self.limits.lower_rad) or np.any(initial > self.limits.upper_rad):
             raise ValueError("从臂当前位置超出 URDF 关节限位")
-        self.reference = np.asarray(reference.positions)[list(c.joint_indices)]
+        desired = c.joint_positions(self.leader.latest().positions)
+        if not np.isfinite(desired).all() or np.any(desired < self.limits.lower_rad) or np.any(desired > self.limits.upper_rad):
+            raise ValueError("主臂绝对目标超出从臂 URDF 限位或包含无效角度")
+        # Actual position seeds only the velocity limiter, never the mapping zero.
         self.initial = initial
         self._thread = threading.Thread(target=self._run, name="leader-follower", daemon=True)
         self._thread.start()
@@ -69,9 +71,8 @@ class TeleoperationController:
                 if now-deadline > max(0.2, 2*interval) or (sequence and now-previous_time > max(0.2, 2*interval)):
                     raise TimeoutError("控制循环超时")
                 sample = self.leader.latest()
-                joints = np.asarray(sample.positions)[list(c.joint_indices)]
-                desired = self.initial + np.asarray(c.direction)*c.scale*(joints-self.reference)
-                if np.any(desired < self.limits.lower_rad) or np.any(desired > self.limits.upper_rad):
+                desired = c.joint_positions(sample.positions)
+                if not np.isfinite(desired).all() or np.any(desired < self.limits.lower_rad) or np.any(desired > self.limits.upper_rad):
                     raise ValueError("主臂目标超出从臂关节限位")
                 dt = min(max(now-previous_time, 0), interval)
                 target = last + np.clip(desired-last, -np.asarray(self.limits.max_velocity_rad_s)*dt, np.asarray(self.limits.max_velocity_rad_s)*dt)

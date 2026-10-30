@@ -74,8 +74,9 @@ class SessionManifest:
             "last_observation": "dropped",
         }
         if config.teaching_mode == "leader-follower":
-            from data_pipeline.data_collection.teleoperation.config import Calibration, COMMAND_TOPIC
-            calibration = Calibration.load(config.leader.calibration)
+            from data_pipeline.data_collection.teleoperation.config import COMMAND_TOPIC
+            from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
+            calibration = load_absolute_calibration(config.leader)
             action = {
                 "source": "leader_follower_submitted_joint_target",
                 "unit": "rad", "representation": "absolute_joint_position",

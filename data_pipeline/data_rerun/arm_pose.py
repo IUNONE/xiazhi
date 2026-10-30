@@ -18,8 +18,9 @@ import numpy as np
 
 from data_pipeline.data_rerun.leader_preview import (
     LEADER_URDF, LEADER_BASE_ROTATION, LEADER_BASE_ROTATED_ANCHOR,
-    LEADER_DISPLAY_SCALE, FOLLOWER_BASE_ROTATION, _viewer_env,
+    LEADER_DISPLAY_SCALE, LEADER_BASE_POSITION, FOLLOWER_BASE_ROTATION, _viewer_env,
 )
+from data_pipeline.data_collection.teleoperation.mapping import JointMapping
 from data_pipeline.data_rerun.robot_model import DEFAULT_ROBOT_XACRO, build_robot_urdf
 
 JOINT_NAMES = tuple(f'joint{i}' for i in range(1, 7))
@@ -103,9 +104,9 @@ def load_pose(path, model, purpose):
     return validate_angles(angles[name] for name in JOINT_NAMES)
 
 
-def save_pose(path, angles, model, purpose, *, overwrite=False):
+def save_document(path, document, *, overwrite=False):
     path = Path(path)
-    text = json.dumps(pose_document(angles, model, purpose), indent=2) + '\n'
+    text = json.dumps(document, indent=2) + '\n'
     replaced = False
     try:
         stream = path.open('x', encoding='utf-8')
@@ -119,8 +120,12 @@ def save_pose(path, angles, model, purpose, *, overwrite=False):
     return replaced
 
 
+def save_pose(path, angles, model, purpose, *, overwrite=False):
+    return save_document(path, pose_document(angles, model, purpose), overwrite=overwrite)
+
+
 class ArmPosePreview:
-    def __init__(self, model, purpose, memory_limit='25%'):
+    def __init__(self, model, purpose, memory_limit='25%', companion=None):
         import rerun as rr
         import rerun.blueprint as rrb
         from rerun.urdf import UrdfTree
@@ -152,9 +157,10 @@ class ArmPosePreview:
                 rrb.Vertical(
                     rrb.TextDocumentView(name=f'{model.label} - {purpose.title()} Pose', origin='/status'),
                     rrb.Spatial3DView(
-                        name=f'{model.label} Joint Editor', origin='/', contents=['/arm/**', '/world/**'],
+                        name='Absolute Leader/Follower Mapping' if companion else f'{model.label} Joint Editor',
+                        origin='/', contents=['/arm/**', '/leader/**', '/world/**'],
                         spatial_information=rrb.SpatialInformation(target_frame='world'),
-                        eye_controls=rrb.EyeControls3D(position=(1.4, -1.6, 1.1), look_target=(0, -0.15, 0.4), eye_up=(0, 0, 1)),
+                        eye_controls=rrb.EyeControls3D(position=(1.4, -1.6, 1.1), look_target=(0, 0.275, 0.4) if companion else (0, -0.15, 0.4), eye_up=(0, 0, 1)),
                     ), row_shares=[1, 8],
                 ),
                 rrb.TimePanel(state='collapsed', timeline='editor_time', play_state='following'),
@@ -191,6 +197,27 @@ class ArmPosePreview:
                                    rr.CoordinateFrame(f'arm/{joint.child_link}'),
                                    rr.Points3D([[0, 0, 0]], labels=[f'joint_{i}'], show_labels=True,
                                                colors=[[255, 190, 60] if model.arm == 'leader' else [80, 200, 255]], radii=.006), static=True)
+            if companion is not None:
+                companion_path = Path(self.temp.name) / 'leader.urdf'
+                companion_path.write_bytes(companion.urdf_bytes)
+                self.leader_tree = UrdfTree.from_file_path(
+                    companion_path, entity_path_prefix='leader', frame_prefix='leader/',
+                    static_transform_entity_path='/leader/tf_static',
+                )
+                self.leader_joints = [self.leader_tree.get_joint_by_name(name) for name in JOINT_NAMES]
+                if any(j is None or j.joint_type != 'revolute' for j in self.leader_joints):
+                    raise ValueError('The leader model must contain six revolute joints.')
+                self.leader_tree.log_urdf_to_recording(self.recording)
+                self.recording.log('/world/leader', rr.Transform3D(
+                    translation=np.asarray(LEADER_BASE_POSITION) - LEADER_DISPLAY_SCALE * LEADER_BASE_ROTATED_ANCHOR,
+                    mat3x3=LEADER_DISPLAY_SCALE * LEADER_BASE_ROTATION,
+                    parent_frame='world', child_frame=f'leader/{self.leader_tree.root_link().name}',
+                ), static=True)
+                for i, joint in enumerate(self.leader_joints, 1):
+                    self.recording.log(f'/leader/joint_labels/{joint.name}',
+                                       rr.CoordinateFrame(f'leader/{joint.child_link}'),
+                                       rr.Points3D([[0, 0, 0]], labels=[f'joint_{i}'], show_labels=True,
+                                                   colors=[[255, 190, 60]], radii=.006), static=True)
         except BaseException:
             self.close()
             raise
@@ -228,3 +255,29 @@ class ArmPosePreview:
                         self.viewer.wait()
             finally:
                 self.temp.cleanup()
+
+
+class MappingPreview(ArmPosePreview):
+    def __init__(self, leader, follower, memory_limit='25%'):
+        self.leader_model = leader
+        super().__init__(follower, 'mapping', memory_limit, companion=leader)
+
+    def update_mapping(self, offsets, directions, probe=None):
+        mapping = JointMapping.create(offsets, directions, self.leader_model.sha256, self.model.sha256)
+        leader = np.zeros(6)
+        if probe is not None:
+            leader[probe] = np.deg2rad(10.)
+            joint = self.leader_joints[probe]
+            if not joint.limit_lower <= leader[probe] <= joint.limit_upper:
+                raise ValueError('The +10 degree direction preview exceeds the leader limit.')
+        follower = mapping.apply(leader)
+        self.update(np.rad2deg(follower))
+        for joint, value in zip(self.leader_joints, leader):
+            self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
+        self.recording.log('/status', self.rr.TextDocument(
+            'Absolute mapping: follower = offset + direction * leader\n'
+            + ('Leader held at URDF zero.' if probe is None else f'Direction check: leader joint_{probe+1} = +10 deg (preview only).')
+            + f'\nOffsets (deg): {list(offsets)}\nDirections: {list(directions)}'
+        ))
+        self.recording.flush(timeout_sec=0)
+        self.current_mapping = mapping

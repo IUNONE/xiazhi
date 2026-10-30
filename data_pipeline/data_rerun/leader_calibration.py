@@ -87,6 +87,11 @@ class LeaderModelCalibration:
                 raise ValueError('比例与标定模式或读数不一致')
         if document.get('direction') != directions:
             raise ValueError('方向标记与记录的编码器读数不一致')
+        home = document.get('home_raw')
+        if home is not None and (len(home) != len(calibration.servo_ids) or any(
+                type(v) is not int or not lo <= v <= hi
+                for v, lo, hi in zip(home, calibration.raw_min, calibration.raw_max))):
+            raise ValueError('模型标定中的完整回位读数 home_raw 无效')
         self.document = document
         self.indices = list(calibration.joint_indices)
         self.direction = np.asarray(directions)
@@ -99,7 +104,7 @@ class LeaderModelCalibration:
         )
 
     @classmethod
-    def from_reference_readings(cls, calibration, urdf, zero, reference, reference_deg, poses):
+    def from_reference_readings(cls, calibration, urdf, zero, reference, reference_deg, poses, home_raw=None):
         if any(len(values) != 6 for values in (zero, reference, reference_deg)):
             raise ValueError('需要六轴的零位和方向采样')
         directions = [model_axis_direction(calibration, i, z, r, a)
@@ -116,6 +121,8 @@ class LeaderModelCalibration:
             'direction': directions, 'scale': scales,
             'reference_poses': poses,
         }
+        if home_raw is not None:
+            document['home_raw'] = list(home_raw)
         return cls(document, calibration, urdf)
 
     @classmethod
