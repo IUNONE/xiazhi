@@ -181,8 +181,10 @@ prepare_rosdistro() {
         printf 'Trying rosdistro index from %s...\n' "${names[$i]}"
         if /usr/bin/python3 - "${urls[$i]}" "${prefixes[$i]}" "$final" <<'PY'
 import pathlib
+import re
 import sys
 import urllib.request
+from urllib.parse import urljoin
 url, prefix, final = sys.argv[1:]
 github = "https://raw.githubusercontent.com/ros/rosdistro/master"
 request = urllib.request.Request(url, headers={"User-Agent": "xiazhi-setup"})
@@ -197,6 +199,30 @@ if "humble:" not in text or "distributions:" not in text:
     raise SystemExit(1)
 if prefix != github:
     text = text.replace(github, prefix)
+# The index lists each distro as a relative path. A file:// index URL would
+# resolve humble/distribution.yaml inside .setup-state/, so make it absolute.
+base_url = prefix.rstrip("/") + "/"
+
+def absolute(value):
+    value = value.strip().strip("'\"")
+    if re.match(r"^[a-z][a-z0-9+.-]*://", value, re.I):
+        return value
+    return urljoin(base_url, value)
+
+def replace_distribution(match):
+    indent, body = match.group(1), match.group(2).strip()
+    comment = ""
+    if "#" in body:
+        body, comment = body.split("#", 1)
+        body = body.strip()
+        comment = " #" + comment.rstrip()
+    if body.startswith("["):
+        inner = body[1:body.rfind("]")]
+        parts = [absolute(part) for part in inner.split(",") if part.strip()]
+        return f"{indent}[{', '.join(parts)}]{comment}"
+    return f"{indent}{absolute(body)}{comment}"
+
+text = re.sub(r"(?m)^(\s*distribution\s*:\s*)(\[[^\]]*\]|\S.*?)\s*$", replace_distribution, text)
 pathlib.Path(final).write_text(text)
 PY
         then
