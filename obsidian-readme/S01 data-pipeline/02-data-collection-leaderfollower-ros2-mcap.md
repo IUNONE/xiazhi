@@ -20,23 +20,6 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 ```
 
-### 可选：统一调整主臂／从臂的零位和标定位
-
-
-```bash
-# U-Arm 主臂零位, 初始 [0,0,0,0,0,0]
-# configs/teleoperation/leader.zero.json
-python scripts/arm_joints.py --arm leader --pose zero
-
-# U-Arm 主臂标定位, [90,90,-90,0,0,90]
-# configs/teleoperation/leader.reference.json
-python scripts/arm_joints.py --arm leader --pose reference
-
-# ECO63 从臂零位, [0,0,0,0,0,0]
-# configs/teleoperation/follower.zero.json
-python scripts/arm_joints.py --arm follower --pose zero
-```
-
 
 ## 1.1 标定主臂零位和正方向
 
@@ -70,6 +53,7 @@ python scripts/inspect_leader.py \
 
 ## 1.2 主从映射配置
 
+观察 rerun 窗口， 调整主从臂之间的零位偏置和正负方向关系（默认主臂固定，调整从臂的相对偏置来让二者运动一致）：
 
 ```bash
 python scripts/arm_joints.py \
@@ -77,6 +61,9 @@ python scripts/arm_joints.py \
   --output configs/teleoperation/leader_follower.mapping.json \
   --overwrite
 ```
+
+![主从映射零位偏置|277](../assets/leader_follower_offset.png)
+
 
 连接真实主臂检查完整映射：
 
@@ -89,8 +76,11 @@ python scripts/inspect_leader.py \
   --viewer
 ```
 
+![[assets/leader_follower_rerun.webm]]
 
 带力矩的回位置测试:
+
+（未测试成功，疑似主臂舵机供电功率不足）
 
 ```bash
 python scripts/inspect_leader.py \
@@ -102,13 +92,18 @@ python scripts/inspect_leader.py \
   --viewer
 ```
 
-主臂电动初始化的运动策略读取 `configs/teleoperation/eco63_runtime.json`。其中 `homing.protocol` 为 `zhongling_ascii`，不再使用 `verified` 或空的串口指令模板，也无需增加命令行参数。驱动按[众灵厂家手册的总线协议](https://www.renrendoc.com/paper/99607126.html)编码位置指令，并使用 `PULR` 在当前位置恢复保持、`PDST` 停止；这属于协议文档核对，尚未实机验证当前 ZP10D 固件。
 
-运动前先读取各轴工作模式：只接受与设备角度量程一致的位置模式，不会自动修改舵机模式；保持/停止指令要求应答。无法确认协议响应、量程或速度限制时，会报错并拒绝继续运动。此前出现 `homing ... verified=true` 错误的电脑需要同时同步脚本和 `configs/teleoperation/eco63_runtime.json`，不需要重做 1.1、1.2 标定。
+```bash
+python scripts/compare_arm_workspaces.py \
+  --leader-config configs/teleoperation/zhongling_eco63.example.json \
+  --model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
+  --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
+  --samples 12000 --seconds 12 --fps 24 \
+  --output outputs/arm_workspaces.mp4
+```
+
 
 ## 2. 启动采集
-
-替换机器人地址、相机 serial 和主臂路径：
 
 ```bash
 TASK_NAME="test"
@@ -134,17 +129,17 @@ python scripts/collect_data_ros2.py \
   --leader-model-calibration configs/teleoperation/uarm.model.calibrated.json \
   --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
   --leader-baudrate 115200 \
-  --control-hz 30 \
-  --init-joints='[0,60,-135,75,90,0]'
+  --control-hz 30
+  # --init-joints='[0,60,-135,75,90,0]'
 ```
 
 
 | 按键 | 行为 |
 |---|---|
-| `i` | 暂停跟随，先让主臂回到标定 init，再独立控制从臂回位，不录包 |
-| `r` | 回位后提示扶好主臂；按下后卸力、开始跟随并录制 |
+| `i` | 暂停跟随；无 `--init-joints` 时仅让从臂对齐按键时的主臂姿态；有该参数时按原流程主从回位。不录包 |
+| `r` | 从臂对齐或回位后，扶稳主臂；按下后卸力、开始跟随并录制 |
 | `s` | 保存当前 episode；主臂仍卸力，主从继续跟随 |
-| 再次 `i` | 暂停跟随并重新回位，准备下一轮 `r → s` |
+| 再次 `i` | 暂停跟随，按当前模式重新对齐或回位，准备下一轮 `r → s` |
 | `q` | 停止跟随，保存正在录制的 episode 后退出，不自动返航 |
 | `Ctrl-C` | 停止并退出，未完成 episode 标记失败 |
 

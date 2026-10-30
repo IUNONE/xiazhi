@@ -76,7 +76,7 @@ class SessionManifest:
         if config.teaching_mode == "leader-follower":
             from data_pipeline.data_collection.teleoperation.config import COMMAND_TOPIC
             from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
-            calibration = load_absolute_calibration(config.leader)
+            calibration = load_absolute_calibration(config.leader, require_home=config.robot.init_joints_deg is not None)
             action = {
                 "source": "leader_follower_submitted_joint_target",
                 "unit": "rad", "representation": "absolute_joint_position",

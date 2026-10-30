@@ -119,7 +119,7 @@ class CollectionConfig:
         if self.teaching_mode == "leader-follower":
             if self.capture_mode != "direct" or self.leader is None:
                 raise ValueError("主从遥操需要 direct 和 leader 配置")
-            self.leader.validate()
+            self.leader.validate(require_homing=self.robot.init_joints_deg is not None)
         elif self.leader is not None:
             raise ValueError("drag 模式不能提供 leader 配置")
         if not self.cameras:

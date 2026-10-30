@@ -59,7 +59,7 @@ def main() -> None:
         dest="init_joints",
         type=parse_init_joints,
         default=None,
-        help="采集开始时的六关节角度, zsh 示例 '[0,60,-135,75,90,0]'",
+        help="从臂回位角度；主从模式省略时按 i 对齐当前主臂。zsh 示例 '[0,60,-135,75,90,0]'",
     )
     parser.add_argument("--drag-mode", type=int, choices=[0, 1, 2, 3], default=3)
     parser.add_argument(

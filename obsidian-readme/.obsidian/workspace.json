@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "f6ea8ad5f7cd76e7",
+        "id": "a1d1a03b0a9dd591",
         "type": "tabs",
         "children": [
           {
-            "id": "e88d9c7f19b54426",
+            "id": "5e97ae82ff3250ec",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -83,7 +83,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 217.18359375
+    "width": 224.171875
   },
   "right": {
     "id": "354b26a61b15add3",
@@ -188,19 +188,22 @@
       "bases:新建数据库": false
     }
   },
-  "active": "e88d9c7f19b54426",
+  "active": "5e97ae82ff3250ec",
   "lastOpenFiles": [
+    "assets/leader_follower_rerun.webm",
+    "assets/leader_follower_rerun_09-30.webm",
+    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
+    "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
+    "S01 data-pipeline/04-data-collect-rerun-visualization.md",
+    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
+    "assets/leader_follower_offset.png",
+    "assets/zero.png",
     "assets/1.webm",
     "assets/1.png",
     "1.webm",
     "1.png",
     "S01 data-pipeline/1.webm",
     "S01 data-pipeline/1.png",
-    "assets/zero.png",
-    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
-    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
-    "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
-    "S01 data-pipeline/04-data-collect-rerun-visualization.md",
     "assets",
     "S04 IL/README.md",
     "S06 Deploy/README.md",

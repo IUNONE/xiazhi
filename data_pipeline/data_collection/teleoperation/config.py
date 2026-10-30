@@ -21,7 +21,7 @@ class LeaderConfig:
     model_calibration: Path | None = None
     mapping: Path | None = None
 
-    def validate(self) -> None:
+    def validate(self, *, require_homing=True) -> None:
         if not self.port or self.baudrate <= 0:
             raise ValueError("主臂串口和波特率无效")
         if not math.isfinite(self.control_hz) or not 1 <= self.control_hz <= 50:
@@ -29,8 +29,9 @@ class LeaderConfig:
         if not math.isfinite(self.stale_after_s) or not 0.1 <= self.stale_after_s <= 1:
             raise ValueError("主臂数据有效期必须在 0.1..1 秒")
         from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
-        calibration = load_absolute_calibration(self)
-        RuntimeSettings.load(self.runtime_config).homing(calibration)
+        calibration = load_absolute_calibration(self, require_home=require_homing)
+        if require_homing:
+            RuntimeSettings.load(self.runtime_config).homing(calibration)
 
 
 @dataclass(frozen=True)
@@ -140,7 +141,9 @@ class RuntimeSettings:
 
     def homing(self, calibration) -> dict:
         home = self.leader_motion()
-        raw = calibration.document.get("home_raw") or calibration.document.get("zero_raw")
+        raw = calibration.document.get("home_raw")
+        if raw is None and calibration.document.get("mode") != "absolute":
+            raw = calibration.document.get("zero_raw")
         home["raw"] = raw
         if not isinstance(raw, list) or len(raw) != len(calibration.servo_ids):
             raise ValueError("homing.raw 必须按 servo_ids 顺序包含全部主臂初始位置")

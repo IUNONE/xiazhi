@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
+
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
 from data_pipeline.data_collection.hardware.zhongling import ZhonglingLeader
@@ -35,11 +37,14 @@ class _CommandSink:
 def collect_ros_session(collector, path, manifest, keys):
     config = collector.config
     from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
-    calibration = load_absolute_calibration(config.leader)
+    manual_alignment = config.robot.init_joints_deg is None
+    calibration = load_absolute_calibration(config.leader, require_home=not manual_alignment)
     runtime = RuntimeSettings.load(config.leader.runtime_config)
-    runtime.homing(calibration)
+    if not manual_alignment:
+        runtime.homing(calibration)
     limits = runtime.follower_limits()
-    collector._arm.validate_home(limits.lower_rad, limits.upper_rad)
+    if not manual_alignment:
+        collector._arm.validate_home(limits.lower_rad, limits.upper_rad)
     manifest.collection["teleoperation_runtime"] = runtime.document
     manifest.collection["follower_limits"] = {"lower_rad": limits.lower_rad, "upper_rad": limits.upper_rad, "max_velocity_rad_s": limits.max_velocity_rad_s, "max_tracking_error_rad": limits.max_tracking_error_rad}
     leader = ZhonglingLeader(config.leader, calibration)
@@ -100,7 +105,10 @@ def collect_ros_session(collector, path, manifest, keys):
 
     try:
         leader.connect()
-        print('按 i 让主从分别回到 init；回位完成、扶稳主臂后按 r。按 q 退出。', flush=True)
+        if manual_alignment:
+            print('未指定 init：请手动将主臂摆到合适位置并扶稳，按 i 让从臂对齐当前主臂。主臂不会自动回位或卸力；对齐后按 r 开始。按 q 退出。', flush=True)
+        else:
+            print('按 i 让主从分别回到 init；回位完成、扶稳主臂后按 r。按 q 退出。', flush=True)
         while True:
             collector._ensure_processes_alive()
             leader.latest()
@@ -119,23 +127,34 @@ def collect_ros_session(collector, path, manifest, keys):
                 break
             if key == 'i':
                 if episode is not None:
-                    print('正在录制，请先按 s 保存，再按 i 回位。', flush=True)
+                    print('正在录制，请先按 s 保存，再按 i 对齐或回位。', flush=True)
                     continue
                 ready = False
                 if controller is not None:
                     controller.stop()
                     controller = None
-                print('跟随已暂停。主臂回到标定 init，随后从臂独立回位；不录包。', flush=True)
-                leader.move_home(poll=poll)
-                operation(collector._arm.restore_home)
-                ready = True
-                print('主从已到 init。请扶好主臂！按 r 卸载主臂力矩并开始跟随、录制。', flush=True)
+                if manual_alignment:
+                    sample = leader.read_once()
+                    target = np.asarray(calibration.joint_positions(sample.positions), dtype=float)
+                    if target.shape != (6,) or not np.isfinite(target).all() or np.any(target < limits.lower_rad) or np.any(target > limits.upper_rad):
+                        print('当前主臂姿态映射后的从臂目标无效或超出限位。未发送运动指令，请调整主臂后再按 i。', flush=True)
+                        continue
+                    print(f'请扶稳主臂并保持不动。从臂正移动到当前主臂对应位置 {np.rad2deg(target).round(2).tolist()}°；不录包。', flush=True)
+                    operation(lambda: collector._arm.move_to_joint_pose(target))
+                    ready = True
+                    print('从臂已对齐。请继续扶稳主臂，按 r 卸力并开始跟随、录制。', flush=True)
+                else:
+                    print('跟随已暂停。主臂回到标定 init，随后从臂独立回位；不录包。', flush=True)
+                    leader.move_home(poll=poll)
+                    operation(collector._arm.restore_home)
+                    ready = True
+                    print('主从已到 init。请扶好主臂！按 r 卸载主臂力矩并开始跟随、录制。', flush=True)
             elif key == 'r':
                 if episode is not None:
                     print('当前 episode 正在录制；按 s 保存。', flush=True)
                     continue
                 if not ready and controller is None:
-                    print('请先按 i 完成主从回位。', flush=True)
+                    print('请先手动摆好主臂并按 i 对齐从臂。' if manual_alignment else '请先按 i 完成主从回位。', flush=True)
                     continue
                 episode_path = config.episode_output_path(index)
                 if episode_path.exists():
@@ -162,10 +181,10 @@ def collect_ros_session(collector, path, manifest, keys):
                 print(f'episode {index:06d} 录制中；按 s 保存并继续跟随。', flush=True)
             elif key == 's':
                 if episode is None:
-                    print('当前未录制。跟随状态不变；按 i 回位或 r 开始录制。', flush=True)
+                    print('当前未录制。跟随状态不变；按 i 对齐当前主臂，或 r 开始录制。' if manual_alignment else '当前未录制。跟随状态不变；按 i 回位或 r 开始录制。', flush=True)
                     continue
                 finish_episode('s')
-                print('episode 已保存，主臂仍卸力，主从继续跟随。按 i 暂停跟随并回位，或 r 继续录制。', flush=True)
+                print('episode 已保存，主臂仍卸力，主从继续跟随。按 i 暂停跟随并对齐当前主臂，或 r 继续录制。' if manual_alignment else 'episode 已保存，主臂仍卸力，主从继续跟随。按 i 暂停跟随并回位，或 r 继续录制。', flush=True)
     except _ExitSession:
         reason = 'q'
     except BaseException as exc:

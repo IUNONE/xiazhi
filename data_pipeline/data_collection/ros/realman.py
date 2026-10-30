@@ -521,16 +521,23 @@ class RealManRosArm:
 
     def restore_home(self) -> None:
         """通过官方 MoveJ topic 低速返回配置的初始关节位置。"""
+        if self._home_joints_rad is None:
+            raise RuntimeError("没有可用的初始关节位姿")
+        self.move_to_joint_pose(self._home_joints_rad)
+
+    def move_to_joint_pose(self, joints_rad) -> None:
+        """Move to a fixed absolute snapshot without changing the saved home pose."""
+        target = np.asarray(joints_rad, dtype=float).copy()
+        if target.shape != (6,) or not np.isfinite(target).all():
+            raise ValueError("MoveJ 目标必须为六个有限弧度值")
         if self._drag_enabled:
             raise RuntimeError("拖动示教尚未停止，拒绝执行返航")
         if self._replay_active:
             raise RuntimeError("轨迹正在复现，拒绝执行返航")
-        if self._home_joints_rad is None:
-            raise RuntimeError("没有可用的初始关节位姿")
         if self._movej_publisher is None or self._movej_type is None:
             raise RuntimeError("MoveJ ROS publisher 未初始化")
         message = self._movej_type()
-        message.joint = self._home_joints_rad.tolist()
+        message.joint = target.tolist()
         message.speed = self.config.home_return_speed
         message.block = True
         message.trajectory_connect = 0
@@ -545,14 +552,14 @@ class RealManRosArm:
                     raise TimeoutError("等待 /rm_driver/movej_result 超时")
                 self._condition.wait(timeout=remaining)
             if not self._movej_result:
-                raise RuntimeError("rm_driver MoveJ 返航失败")
+                raise RuntimeError("rm_driver MoveJ 运动失败")
         final_joints = self.read_observation().joint_position
         max_error = math.degrees(
-            float(np.max(np.abs(final_joints - self._home_joints_rad)))
+            float(np.max(np.abs(final_joints - target)))
         )
         if max_error > self.config.home_tolerance_deg:
             raise RuntimeError(
-                f"返航关节误差 {max_error:.3f} deg 超过 "
+                f"MoveJ 关节误差 {max_error:.3f} deg 超过 "
                 f"{self.config.home_tolerance_deg:.3f} deg"
             )
 

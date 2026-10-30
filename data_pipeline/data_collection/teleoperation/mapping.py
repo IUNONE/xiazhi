@@ -58,18 +58,20 @@ class JointMapping:
         return self.direction * (angles - np.deg2rad(self.offset_deg))
 
 
-def compose_absolute_calibration(device, model, mapping):
+def compose_absolute_calibration(device, model, mapping, *, require_home=True):
     """Compose the two calibrated coordinate transforms for the hardware reader."""
     home = device.document.get('home_raw') or model.document.get('home_raw')
     if home is None and len(device.servo_ids) == 6:
         home = [0] * 6
         for channel, value in zip(device.joint_indices, model.document['zero_raw']):
             home[channel] = int(round(value))
-    if not isinstance(home, list) or len(home) != len(device.servo_ids):
+    if home is None and require_home:
         raise ValueError('缺少完整主臂回位读数 home_raw，请重新执行 1.1 标定或使用 --save-init 保存设备配置')
-    if any(type(v) is not int or not lo <= v <= hi for v, lo, hi in zip(home, device.raw_min, device.raw_max)):
+    if home is not None and (not isinstance(home, list) or len(home) != len(device.servo_ids) or any(
+            type(v) is not int or not lo <= v <= hi for v, lo, hi in zip(home, device.raw_min, device.raw_max))):
         raise ValueError('主臂 home_raw 无效')
-    zero = list(home)
+    # Unmapped channels have no effect on joint_positions and are never home targets.
+    zero = list(home) if home is not None else list(device.raw_min)
     for channel, value in zip(device.joint_indices, model.document['zero_raw']):
         zero[channel] = value
     direction = (mapping.direction * model.direction).astype(int).tolist()
@@ -88,7 +90,7 @@ def compose_absolute_calibration(device, model, mapping):
     return replace(device, direction=tuple(direction), scale=tuple(scale), sha256=digest, document=document)
 
 
-def load_absolute_calibration(config):
+def load_absolute_calibration(config, *, require_home=True):
     from data_pipeline.data_collection.teleoperation.config import Calibration
     from data_pipeline.data_rerun.arm_pose import ArmModel
     from data_pipeline.data_rerun.leader_calibration import LeaderModelCalibration
@@ -100,4 +102,4 @@ def load_absolute_calibration(config):
     leader_model, follower_model = ArmModel.load('leader'), ArmModel.load('follower')
     model = LeaderModelCalibration.load(config.model_calibration, device, LEADER_URDF)
     mapping = JointMapping.load(config.mapping, leader_model.sha256, follower_model.sha256)
-    return compose_absolute_calibration(device, model, mapping)
+    return compose_absolute_calibration(device, model, mapping, require_home=require_home)
