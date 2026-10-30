@@ -1,3 +1,6 @@
+
+主从臂采用 gello 设计，参考: https://github.com/MINT-SJTU/LeRobot-Anything-U-Arm
+
 ## 1. 零位标定与实时预览
 
 连接主臂 USB 串口后，查看设备：
@@ -15,8 +18,29 @@ source ${HOME}/xiazhi/.venv/bin/activate
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
-
 ```
+
+### 可选：用滑块选择模型零位
+
+在 Linux 图形桌面中启动独立的右侧控制窗口，实时调整 Rerun 中的 U-Arm。此工具不连接串口，不需要启动 ECO63 或 ROS；沿用已激活的项目 Python 环境和 `PYTHONPATH` 即可。
+
+```bash
+python scripts/adjust_leader_zero.py \
+  --output configs/teleoperation/uarm.desired-zero.json
+```
+
+窗口中有六个关节滑块，也可以在角度框输入数值后按 Enter。`Reset All` 恢复当前 URDF 的零角度，`Copy Angles` 复制六轴角度，`Save Pose...` 保存选定姿态。界面为英文，主臂显示放大 3 倍。关闭控制窗口会同时关闭这个工具启动的 Rerun。
+
+若提示缺少 Tkinter，执行 `sudo apt-get install python3-tk`；新安装环境的 `scripts/setup.sh` 已包含此依赖。
+
+保存的 `uarm.desired-zero.json` 记录相对于当前 URDF 的六轴角度和 URDF 校验值，供后续修改 URDF 零位使用，不会自动改写模型。将该文件提供给维护者即可准确复现你希望的零位。重新打开同一姿态：
+
+```bash
+python scripts/adjust_leader_zero.py \
+  --input configs/teleoperation/uarm.desired-zero.json
+```
+
+模型零位确定并更新 URDF 后，再执行 1.1，记录实物编码器与新模型零位的对应关系。`uarm.desired-zero.json` 是模型姿态文件，`uarm.model.calibrated.json` 是实物编码器标定文件，两者不能互换。不同使用者可以重新标定各自的编码器偏移；若希望改变模型本身的零角度姿态，则需要重新选择并更新模型零位。
 
 ## 1.1 rerun 标定主臂零位正方向
 

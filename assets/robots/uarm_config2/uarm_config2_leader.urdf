@@ -3,8 +3,9 @@
   <!-- Joint axes reconstructed from circular features in the bundled assembled
        STL meshes (meters), not from the ECO63 joint axes. All joint frames keep
        the CAD orientation at q=0; each visual offset cancels its cumulative
-       joint translation. See tests/test_leader_model.py for mesh-based checks.
-       Axis signs still require verification against the physical encoders. -->
+       joint translation.
+       joint1 and joint4 axis signs reversed after physical motion comparison.
+       Encoder zero positions and signs are stored in the model calibration. -->
   <link name="base_link">
     <visual>
       <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0" />
@@ -35,7 +36,7 @@
     <origin xyz="0.1207304713 0.2031548637 0.1353154913" rpy="0 0 0" />
     <parent link="base_link" />
     <child link="link1" />
-    <axis xyz="0.3695929294 -0.9283029711 -0.0406775179" />
+    <axis xyz="-0.3695929294 0.9283029711 0.0406775179" />
     <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link1">
@@ -86,7 +87,7 @@
     <origin xyz="-0.0489368402 0.0226440259 0.0783323102" rpy="0 0 0" />
     <parent link="link3" />
     <child link="link4" />
-    <axis xyz="0.9104241205 0.3705338696 -0.1839363266" />
+    <axis xyz="-0.9104241205 -0.3705338696 0.1839363266" />
     <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832" />
   </joint>
   <link name="link4">
