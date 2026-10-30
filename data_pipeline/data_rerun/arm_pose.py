@@ -153,15 +153,33 @@ class ArmPosePreview:
             if any(joint is None or joint.joint_type != 'revolute' for joint in self.joints):
                 raise ValueError('The model must contain six revolute joints.')
             self.limits_deg = [(math.degrees(j.limit_lower), math.degrees(j.limit_upper)) for j in self.joints]
+            if companion is not None:
+                scene = rrb.Horizontal(
+                    rrb.Spatial3DView(
+                        name='U-Arm | Joint Preview', origin='/',
+                        contents=['/leader/**', '/world/leader'],
+                        spatial_information=rrb.SpatialInformation(target_frame='world'),
+                        eye_controls=rrb.EyeControls3D(
+                            position=(1.4, -1.05, 1.1), look_target=(0, 0.55, 0.45), eye_up=(0, 0, 1)),
+                    ),
+                    rrb.Spatial3DView(
+                        name='ECO63 | Offset Alignment', origin='/',
+                        contents=['/arm/**', '/world/arm'],
+                        spatial_information=rrb.SpatialInformation(target_frame='world'),
+                        eye_controls=rrb.EyeControls3D(
+                            position=(1.4, -1.6, 1.1), look_target=(0, 0, 0.45), eye_up=(0, 0, 1)),
+                    ), column_shares=[1, 1],
+                )
+            else:
+                scene = rrb.Spatial3DView(
+                    name=f'{model.label} Joint Editor', origin='/', contents=['/arm/**', '/world/**'],
+                    spatial_information=rrb.SpatialInformation(target_frame='world'),
+                    eye_controls=rrb.EyeControls3D(position=(1.4, -1.6, 1.1), look_target=(0, -0.15, 0.4), eye_up=(0, 0, 1)),
+                )
             blueprint = rrb.Blueprint(
                 rrb.Vertical(
-                    rrb.TextDocumentView(name=f'{model.label} - {purpose.title()} Pose', origin='/status'),
-                    rrb.Spatial3DView(
-                        name='Absolute Leader/Follower Mapping' if companion else f'{model.label} Joint Editor',
-                        origin='/', contents=['/arm/**', '/leader/**', '/world/**'],
-                        spatial_information=rrb.SpatialInformation(target_frame='world'),
-                        eye_controls=rrb.EyeControls3D(position=(1.4, -1.6, 1.1), look_target=(0, 0.275, 0.4) if companion else (0, -0.15, 0.4), eye_up=(0, 0, 1)),
-                    ), row_shares=[1, 8],
+                    rrb.TextDocumentView(name='Absolute Mapping' if companion else f'{model.label} - {purpose.title()} Pose', origin='/status'),
+                    scene, row_shares=[1, 8],
                 ),
                 rrb.TimePanel(state='collapsed', timeline='editor_time', play_state='following'),
                 rrb.BlueprintPanel(state='collapsed'), rrb.SelectionPanel(state='collapsed'),
@@ -184,8 +202,9 @@ class ArmPosePreview:
                     if time.monotonic() >= deadline:
                         raise TimeoutError('Timed out waiting for the Rerun viewer.')
                     time.sleep(.05)
-            self.recording = rr.RecordingStream('arm_joint_editor', recording_id=uuid4())
+            self.recording = rr.RecordingStream('arm_mapping_editor' if companion else f'arm_joint_editor_{model.arm}_{purpose}', recording_id=uuid4())
             self.recording.connect_grpc(f'rerun+http://127.0.0.1:{port}/proxy', default_blueprint=blueprint)
+            self.recording.send_blueprint(blueprint)
             self.tree.log_urdf_to_recording(self.recording)
             self.recording.log('/world/arm', rr.Transform3D(
                 translation=-self.scale * LEADER_BASE_ROTATED_ANCHOR if model.arm == 'leader' else [0., 0., 0.],
@@ -261,23 +280,27 @@ class MappingPreview(ArmPosePreview):
     def __init__(self, leader, follower, memory_limit='25%'):
         self.leader_model = leader
         super().__init__(follower, 'mapping', memory_limit, companion=leader)
+        try:
+            self.leader_limits_deg = [(math.degrees(j.limit_lower), math.degrees(j.limit_upper)) for j in self.leader_joints]
+            # Explicitly render both arms at startup, before any slider event.
+            self.update_mapping([0.] * 6, [1] * 6)
+        except BaseException:
+            self.close()
+            raise
 
-    def update_mapping(self, offsets, directions, probe=None):
+    def update_mapping(self, offsets, directions, leader_deg=None):
+        leader_deg = validate_angles([0.] * 6 if leader_deg is None else leader_deg)
+        if any(not lo <= v <= hi for v, (lo, hi) in zip(leader_deg, self.leader_limits_deg)):
+            raise ValueError('A leader preview angle is outside the URDF limits.')
         mapping = JointMapping.create(offsets, directions, self.leader_model.sha256, self.model.sha256)
-        leader = np.zeros(6)
-        if probe is not None:
-            leader[probe] = np.deg2rad(10.)
-            joint = self.leader_joints[probe]
-            if not joint.limit_lower <= leader[probe] <= joint.limit_upper:
-                raise ValueError('The +10 degree direction preview exceeds the leader limit.')
-        follower = mapping.apply(leader)
-        self.update(np.rad2deg(follower))
+        leader = np.deg2rad(leader_deg)
+        self.update(np.rad2deg(mapping.apply(leader)))
         for joint, value in zip(self.leader_joints, leader):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
         self.recording.log('/status', self.rr.TextDocument(
+            'Left: U-Arm preview. Right: ECO63 absolute mapping. Use Zero Leader to return to the zero reference.\n'
             'Absolute mapping: follower = offset + direction * leader\n'
-            + ('Leader held at URDF zero.' if probe is None else f'Direction check: leader joint_{probe+1} = +10 deg (preview only).')
-            + f'\nOffsets (deg): {list(offsets)}\nDirections: {list(directions)}'
+            + f'Leader (deg): {list(leader_deg)}\nOffsets (deg): {list(offsets)}\nDirections: {list(directions)}'
         ))
         self.recording.flush(timeout_sec=0)
         self.current_mapping = mapping

@@ -21,12 +21,12 @@ class SliderWindow:
         self.root, self.preview, self.output = root, preview, output
         self.overwrite = overwrite
         self.is_mapping = isinstance(preview, MappingPreview)
-        self.probe = None
         self.directions = []
         directions = [1] * 6 if directions is None else directions
         self.dirty = True
         self.pending = None
         self.values, self.entries = [], []
+        self.leader_values, self.leader_entries = [], []
         root.title('Absolute Leader/Follower Mapping' if self.is_mapping else f'{preview.model.label} - {preview.purpose.title()} Pose Controls')
         width, height = 460, min(740, root.winfo_screenheight() - 100)
         root.geometry(f'{width}x{height}+{max(0, root.winfo_screenwidth() - width - 20)}+40')
@@ -36,11 +36,21 @@ class SliderWindow:
         frame = ttk.Frame(root, padding=16)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, text='Leader / Follower Mapping' if self.is_mapping else f'{preview.model.label} - {preview.purpose.title()}', font=('', 17, 'bold')).pack(anchor='w')
-        ttk.Label(frame, text=('Leader fixed at zero. Sliders set follower offsets.\nSelect each joint sign; +10 deg buttons check direction.' if self.is_mapping else 'Offline editor - no robot connection\nAngles are relative to the current URDF zero.')).pack(anchor='w', pady=(6, 10))
+        ttk.Label(frame, text=('Set follower offsets/signs and preview leader motion.\nZero Leader returns the U-Arm to its URDF zero.' if self.is_mapping else 'Offline editor - no robot connection\nAngles are relative to the current URDF zero.')).pack(anchor='w', pady=(6, 10))
+        controls = frame
+        if self.is_mapping:
+            ttk.Button(frame, text='Zero Leader', command=self.zero_leader).pack(anchor='w', pady=(0, 8))
+            tabs = ttk.Notebook(frame)
+            tabs.pack(fill='x')
+            controls = ttk.Frame(tabs, padding=4)
+            leader_controls = ttk.Frame(tabs, padding=4)
+            tabs.add(controls, text='Follower Offsets / Signs')
+            tabs.add(leader_controls, text='U-Arm Joints')
+            self.build_leader_controls(leader_controls)
         for index, (value, (lo, hi)) in enumerate(zip(angles, preview.limits_deg)):
             if not lo <= value <= hi:
                 raise ValueError(f'{JOINT_NAMES[index]} is outside the URDF limits.')
-            group = ttk.Frame(frame)
+            group = ttk.Frame(controls)
             group.pack(fill='x', pady=6)
             header = ttk.Frame(group)
             header.pack(fill='x')
@@ -51,7 +61,6 @@ class SliderWindow:
                 selector = ttk.Combobox(header, textvariable=sign, values=('+1', '-1'), width=3, state='readonly')
                 selector.pack(side='left', padx=8)
                 selector.bind('<<ComboboxSelected>>', self.mark_dirty)
-                ttk.Button(header, text='+10 deg', width=8, command=lambda i=index: self.toggle_probe(i)).pack(side='left')
             text = tk.StringVar(value=str(value))
             variable = tk.DoubleVar(value=value)
             self.entries.append(text)
@@ -65,25 +74,66 @@ class SliderWindow:
                       command=lambda value, i=index: self.slide(i, value)).pack(fill='x', pady=(4, 0))
         buttons = ttk.Frame(frame)
         buttons.pack(fill='x', pady=(12, 6))
-        ttk.Button(buttons, text='Reset All', command=self.reset).pack(side='left')
+        ttk.Button(buttons, text='Reset Offsets' if self.is_mapping else 'Reset All', command=self.reset).pack(side='left')
         ttk.Button(buttons, text='Copy Mapping' if self.is_mapping else 'Copy Angles', command=self.copy).pack(side='left', padx=8)
         ttk.Button(buttons, text='Save Mapping...' if self.is_mapping else 'Save Pose...', command=self.save).pack(side='right')
         self.status = tk.StringVar(value='Drag a slider or type an angle and press Enter.')
         ttk.Label(frame, textvariable=self.status, wraplength=415).pack(anchor='w', pady=6)
-        ttk.Label(frame, text=('Absolute: follower = offset + direction * leader\nDirection checks never change the saved zero offsets.' if self.is_mapping else 'Save Pose records joint angles for this arm and purpose.\nIt does not modify the URDF or calibrate hardware.'), wraplength=415).pack(anchor='w', pady=6)
+        ttk.Label(frame, text=('Absolute: follower = offset + direction * leader\nLeader preview angles are not saved in the mapping.' if self.is_mapping else 'Save Pose records joint angles for this arm and purpose.\nIt does not modify the URDF or calibrate hardware.'), wraplength=415).pack(anchor='w', pady=6)
         self.pending = root.after(30, self.refresh)
+
+    def build_leader_controls(self, parent):
+        import tkinter as tk
+        from tkinter import ttk
+
+        for index, (lo, hi) in enumerate(self.preview.leader_limits_deg):
+            group = ttk.Frame(parent)
+            group.pack(fill='x', pady=6)
+            header = ttk.Frame(group)
+            header.pack(fill='x')
+            ttk.Label(header, text=f'joint_{index+1}', font=('', 11, 'bold')).pack(side='left')
+            variable, text = tk.DoubleVar(value=0.), tk.StringVar(value='0.0')
+            self.leader_values.append(variable)
+            self.leader_entries.append(text)
+            ttk.Label(header, text='deg').pack(side='right', padx=(4, 0))
+            entry = ttk.Entry(header, textvariable=text, width=10, justify='right')
+            entry.pack(side='right')
+            entry.bind('<Return>', lambda event, i=index: self.apply_leader_entry(i))
+            entry.bind('<FocusOut>', lambda event, i=index: self.apply_leader_entry(i))
+            ttk.Scale(group, from_=lo, to=hi, variable=variable,
+                      command=lambda value, i=index: self.slide_leader(i, value)).pack(fill='x', pady=(4, 0))
+
+    def slide_leader(self, index, value):
+        value = round(float(value), 1)
+        self.leader_values[index].set(value)
+        self.leader_entries[index].set(f'{value:.1f}')
+        self.dirty = True
+
+    def apply_leader_entry(self, index):
+        lo, hi = self.preview.leader_limits_deg[index]
+        try:
+            value = float(self.leader_entries[index].get())
+            if not math.isfinite(value) or not lo <= value <= hi:
+                raise ValueError
+        except ValueError:
+            self.status.set(f'Leader joint_{index+1}: enter an angle from {lo:.1f} to {hi:.1f} deg.')
+            return False
+        self.leader_values[index].set(value)
+        self.dirty = True
+        return True
+
+    def zero_leader(self):
+        for index in range(6):
+            self.slide_leader(index, 0.)
+        self.status.set('Leader reset to URDF zero. Mapping offsets and directions are unchanged.')
 
     def mark_dirty(self, event=None):
         self.dirty = True
 
-    def toggle_probe(self, index):
-        self.probe = None if self.probe == index else index
-        self.dirty = True
-        self.status.set('Leader at zero.' if self.probe is None else f'Checking joint_{index+1} at +10 deg. Click again to return to zero.')
-
     def update_preview(self, angles):
         if self.is_mapping:
-            self.preview.update_mapping(angles, [int(v.get()) for v in self.directions], self.probe)
+            self.preview.update_mapping(angles, [int(v.get()) for v in self.directions],
+                                        [v.get() for v in self.leader_values])
         else:
             self.preview.update(angles)
 
@@ -114,7 +164,6 @@ class SliderWindow:
     def reset(self):
         for i in range(6):
             self.slide(i, 0)
-        self.probe = None
         self.status.set('Offsets reset to zero; directions preserved.' if self.is_mapping else 'All joints reset to the current URDF zero.')
 
     def copy(self):
@@ -188,7 +237,7 @@ def joint_angles(value):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument('--calibrate_leader_follwer', '--calibrate-leader-follower', dest='calibrate_leader_follower', action='store_true', help='Offline absolute mapping: leader held at zero, edit follower offsets and per-joint signs')
+    parser.add_argument('--calibrate_leader_follwer', '--calibrate-leader-follower', dest='calibrate_leader_follower', action='store_true', help='Offline absolute mapping: edit follower offsets/signs, preview leader joints with one-click zero reset')
     parser.add_argument('--arm', choices=ARMS, help='Robot to edit; defaults to input-file arm or leader')
     parser.add_argument('--pose', choices=POSES, help='Pose purpose; defaults to input-file type or zero')
     initial = parser.add_mutually_exclusive_group()
@@ -237,6 +286,8 @@ def main():
     try:
         preview = (MappingPreview(leader_model, model, args.memory_limit) if args.calibrate_leader_follower
                    else ArmPosePreview(model, purpose, args.memory_limit))
+        if args.calibrate_leader_follower:
+            preview.update_mapping(angles, directions)
         SliderWindow(root, preview, angles, output, overwrite=args.overwrite, directions=directions)
         root.deiconify()
         root.mainloop()

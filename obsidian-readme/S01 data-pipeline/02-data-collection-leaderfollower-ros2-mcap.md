@@ -69,7 +69,6 @@ python scripts/inspect_leader.py \
 
 ## 1.2 离线配置主从 URDF 的绝对映射
 
-移动从臂滑块，使从臂处于希望对应主臂零位的姿态
 
 ```bash
 python scripts/arm_joints.py \
