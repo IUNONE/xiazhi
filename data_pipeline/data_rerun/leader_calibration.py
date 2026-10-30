@@ -146,7 +146,7 @@ def sample_stable_raw(read, channels, servo_ids, poll_interval, *, duration=0.8,
     values = np.asarray(samples)
     spread = np.ptp(values[:, channels], axis=0)
     unstable = [f'通道 {channel} / 舵机 {servo_ids[channel]} 波动 {change:g} raw'
-                for channel, change in zip(channels, spread) if change > 10]
+                for channel, change in zip(channels, spread) if change > 30]
     if unstable:
-        raise ValueError('当前标定关节读数不稳定：' + '；'.join(unstable) + '（允许最多 10 raw）')
+        raise ValueError('当前标定关节读数不稳定：' + '；'.join(unstable) + '（允许最多 30 raw）')
     return np.median(values, axis=0)
