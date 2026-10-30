@@ -120,7 +120,7 @@ def main() -> None:
             if preview is not None:
                 preview.calibration = calibration
             target_pose = None
-            message = '两姿态标定完成；橙色主臂和 ECO63 应一起跟随，Ctrl-C 退出。'
+            message = '两姿态标定完成。U-Arm 网格按标定方向跟随读数变化，ECO63 显示映射后的关节角。Ctrl-C 退出。'
             print(message, flush=True)
             if preview is None:
                 return

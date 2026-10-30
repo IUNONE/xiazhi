@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<robot name="uarm_config2_leader">
+  <link name="base_link">
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/base_gen.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/sitter_1.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/sitter_2.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/sitter_mid.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="0.114500 0.201100 0.125600" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link1">
+    <visual>
+      <origin xyz="-0.114500 -0.201100 -0.125600" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/link_1.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="0.015100 0.048800 0.014900" rpy="0 0 0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0.615551 0.764790 0.190244"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link2">
+    <visual>
+      <origin xyz="-0.129600 -0.249900 -0.140500" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/l2j2.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="-0.052300 0.070900 -0.115800" rpy="0 0 0"/>
+    <parent link="link2"/>
+    <child link="link3"/>
+    <axis xyz="0.615551 0.764790 0.190244"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link3">
+    <visual>
+      <origin xyz="-0.077300 -0.320800 -0.024700" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/joint3.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="-0.077300 -0.320800 -0.024700" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/joint3_support.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="-0.053200 0.026600 0.065200" rpy="0 0 0"/>
+    <parent link="link3"/>
+    <child link="link4"/>
+    <axis xyz="0.615551 0.764790 0.190244"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link4">
+    <visual>
+      <origin xyz="-0.024100 -0.347400 -0.089900" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/joint4.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="-0.024100 -0.347400 -0.089900" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/joint4_support.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0.048600 -0.002600 0.065200" rpy="0 0 0"/>
+    <parent link="link4"/>
+    <child link="link5"/>
+    <axis xyz="0.678176 -0.637002 0.366478"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link5">
+    <visual>
+      <origin xyz="-0.072700 -0.344800 -0.155100" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/link3.stl"/></geometry>
+    </visual>  </link>
+  <joint name="joint6" type="revolute">
+    <origin xyz="-0.010700 0.023300 0.060300" rpy="0 0 0"/>
+    <parent link="link5"/>
+    <child link="link6"/>
+    <axis xyz="0.233403 -0.495747 0.836515"/>
+    <limit effort="10" velocity="10" lower="-6.2832" upper="6.2832"/>
+  </joint>
+  <link name="link6">
+    <visual>
+      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/handle_mix.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/handle_1.stl"/></geometry>
+    </visual>    <visual>
+      <origin xyz="-0.062000 -0.368100 -0.215400" rpy="0 0 0"/>
+      <geometry><mesh filename="meshes/trigger.stl"/></geometry>
+    </visual>  </link>
+</robot>

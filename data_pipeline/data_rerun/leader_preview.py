@@ -13,7 +13,7 @@ import numpy as np
 
 from data_pipeline.data_rerun.robot_model import build_robot_urdf
 
-LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2_leader.urdf"
+LEADER_URDF = Path(__file__).resolve().parents[2] / "assets/robots/uarm_config2/uarm_config2_leader.urdf"
 
 
 class LeaderPreview:
@@ -94,7 +94,7 @@ class LeaderPreview:
             self.follower.log_urdf_to_recording(self.recording)
             self.leader.log_urdf_to_recording(self.recording)
             self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
-            self._log_base('leader', self.leader.root_link().name, (0.0, 1.05, 0.0))
+            self._log_base('leader', self.leader.root_link().name, (0.0, 1.4, 0.0))
         except BaseException:
             self.close()
             raise
@@ -124,11 +124,15 @@ class LeaderPreview:
             # Match teleoperation's relative engagement, without moving hardware.
             self.reference = angles.copy()
             self.t0 = sample.timestamp_ns
-        if self.calibration.document.get('zero_raw') is not None:
-            live = self.calibration.joint_positions(sample.positions)
+        # The U-Arm mesh is assembled at the CAD pose, so joint 0 is that pose.
+        # Drive it by the change since preview start, not by the ECO63 absolute angle.
+        live = np.asarray(self.calibration.direction)*self.calibration.scale*(angles-self.reference)
+        if target_deg is not None:
+            follower = np.deg2rad(target_deg)
+        elif self.calibration.document.get('zero_raw') is not None:
+            follower = self.calibration.joint_positions(sample.positions)
         else:
-            live = np.asarray(self.calibration.direction)*self.calibration.scale*(angles-self.reference)
-        follower = np.deg2rad(target_deg) if target_deg is not None else live
+            follower = live
         if not np.isfinite(live).all() or not np.isfinite(follower).all():
             raise ValueError('虚拟关节目标包含非有限数值')
         self.recording.set_time('leader_time', duration=(sample.timestamp_ns-self.t0)/1e9)
@@ -142,11 +146,11 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(angles[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or '原点是 ECO63 从臂，Y 正方向 1.05 m 处的橙色模型是主臂 Config 2。不连接真实从臂。'
+        status = message or '原点是 ECO63 从臂。Y 正方向 1.4 m 处是 U-Arm Config 2 网格，零位为 CAD 装配姿态。不连接真实从臂。'
         if target_deg is not None:
-            status += '\n从臂保持在目标姿态，主臂跟随当前读数。'
+            status += '\n从臂保持在目标姿态，主臂网格跟随相对启动时的读数变化。'
         elif self.calibration.document.get('zero_raw') is None:
-            status += '\n尚未标定：两台模型都显示启动后的相对变化'
+            status += '\n尚未标定：从臂显示启动后的相对变化。'
         if outside:
             status += '\n超出 URDF 限位：' + ', '.join(outside)
         if status != self.last_status:
