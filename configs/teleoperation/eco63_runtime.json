@@ -3,9 +3,7 @@
   "velocity_scale": 0.1,
   "max_tracking_error_rad": 0.2,
   "homing": {
-    "verified": false,
-    "position_command": null,
-    "stop_command": null,
+    "protocol": "zhongling_ascii",
     "duration_ms": 5000,
     "tolerance_raw": 10,
     "timeout_s": 12,

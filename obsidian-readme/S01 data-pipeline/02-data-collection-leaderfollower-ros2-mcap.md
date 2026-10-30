@@ -102,6 +102,10 @@ python scripts/inspect_leader.py \
   --viewer
 ```
 
+主臂电动初始化的运动策略读取 `configs/teleoperation/eco63_runtime.json`。其中 `homing.protocol` 为 `zhongling_ascii`，不再使用 `verified` 或空的串口指令模板，也无需增加命令行参数。驱动按[众灵厂家手册的总线协议](https://www.renrendoc.com/paper/99607126.html)编码位置指令，并使用 `PULR` 在当前位置恢复保持、`PDST` 停止；这属于协议文档核对，尚未实机验证当前 ZP10D 固件。
+
+运动前先读取各轴工作模式：只接受与设备角度量程一致的位置模式，不会自动修改舵机模式；保持/停止指令要求应答。无法确认协议响应、量程或速度限制时，会报错并拒绝继续运动。此前出现 `homing ... verified=true` 错误的电脑需要同时同步脚本和 `configs/teleoperation/eco63_runtime.json`，不需要重做 1.1、1.2 标定。
+
 ## 2. 启动采集
 
 替换机器人地址、相机 serial 和主臂路径：

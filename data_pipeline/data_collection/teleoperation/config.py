@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import string
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,10 +122,11 @@ class RuntimeSettings:
         return cls(document)
 
     def leader_motion(self) -> dict:
-        """Validate position/stop commands without requiring a saved home pose."""
+        """Validate motion policy; wire commands belong to the selected driver."""
+        from data_pipeline.data_collection.hardware.zhongling_protocol import PROTOCOL_NAME
         home = dict(self.document.get("homing", {}))
-        if home.get("verified") is not True:
-            raise ValueError("请先核对运行配置 homing 的主臂回位/停止协议，并设置 verified=true")
+        if home.get('protocol') != PROTOCOL_NAME:
+            raise ValueError('homing.protocol 必须为 zhongling_ascii；请同步 configs/teleoperation/eco63_runtime.json，不再使用 verified/指令模板')
         for key in ("duration_ms", "tolerance_raw", "timeout_s", "max_speed_raw_s"):
             value = home.get(key)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
@@ -135,16 +135,6 @@ class RuntimeSettings:
             raise ValueError("homing.duration_ms 必须为 1000..9999 的整数毫秒")
         if home['timeout_s'] <= home['duration_ms']/1000:
             raise ValueError("homing.timeout_s 必须大于回位时间")
-        for key, required in (("position_command", {"id", "position", "duration"}), ("stop_command", {"id"})):
-            template = home.get(key)
-            if not isinstance(template, str) or not template.isascii() or any(ord(c) < 32 for c in template):
-                raise ValueError(f"homing.{key} 必须是已核对的单行 ASCII 指令模板")
-            fields = {field for _, field, _, _ in string.Formatter().parse(template) if field is not None}
-            if fields != required:
-                raise ValueError(f"homing.{key} 需要占位符 {sorted(required)}")
-            rendered = template.format(id=0, position=1500, duration=3000)
-            if not rendered or len(rendered) > 128:
-                raise ValueError(f"homing.{key} 长度无效")
         return home
 
 

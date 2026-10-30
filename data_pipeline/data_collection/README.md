@@ -23,4 +23,4 @@
 - [MCAP 转 LeRobot](../../obsidian-readme/S01%20data-pipeline/03-data-collection-mcap2lerobot.md)
 - [Rerun 可视化](../../obsidian-readme/S01%20data-pipeline/04-data-collect-rerun-visualization.md)
 
-主臂实现参考 [MINT-SJTU U-Arm 的众灵读取器](https://github.com/MINT-SJTU/LeRobot-Anything-U-Arm/blob/main/src/uarm/scripts/Uarm_teleop/Zhonglin_servo/servo_reader.py)。ZP10D 参数需核对实物，示例标定默认未验证；当前控制六轴，未驱动夹爪。ROS 目标记录表示已发布命令，不表示控制器确认执行。
+主臂实现参考 [MINT-SJTU U-Arm 的众灵读取器](https://github.com/MINT-SJTU/LeRobot-Anything-U-Arm/blob/main/src/uarm/scripts/Uarm_teleop/Zhonglin_servo/servo_reader.py)。ZP10D 设备参数需与实物一致；位置、保持、停止采用众灵 ASCII 协议，运动前读取工作模式并确认保持响应。当前控制六轴，未驱动夹爪。ROS 目标记录表示已发布命令，不表示控制器确认执行。
