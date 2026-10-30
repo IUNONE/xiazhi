@@ -184,7 +184,7 @@ def main():
     parser.add_argument('--robot-xacro', type=Path, default=DEFAULT_ROBOT_XACRO)
     for arm in ('leader', 'follower'):
         parser.add_argument(f'--{arm}-base', default='base_link')
-        parser.add_argument(f'--{arm}-tip', default='link6')
+        parser.add_argument(f'--{arm}-tip', default='link6' if arm == 'leader' else 'Link6')
         parser.add_argument(f'--{arm}-tcp', type=vector, default=np.zeros(3), help='Quoted "x y z" metres in tip frame')
     parser.add_argument('--samples', type=int, default=12000)
     parser.add_argument('--seed', type=int, default=42)
@@ -229,7 +229,7 @@ def main():
                         'Independent bounds do not model posture-dependent interference.',
                         'No collision, orientation, dynamics or path feasibility checks.',
                         'Encoder full-scale range is not a mechanical joint limit.',
-                        'Preview base alignment, true lengths; default endpoint is link6 origin.'],
+                        'Preview base alignment, true lengths; default endpoints are leader link6 and follower Link6 origins.'],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     print('Rendering sampled FK workspaces; no collision checking or hardware access.', flush=True)
