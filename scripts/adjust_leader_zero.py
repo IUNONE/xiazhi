@@ -6,15 +6,16 @@ import json
 import math
 from pathlib import Path
 
-from data_pipeline.data_rerun.leader_zero import JOINT_NAMES, ZeroPosePreview, load_pose, pose_document
+from data_pipeline.data_rerun.leader_zero import JOINT_NAMES, ZeroPosePreview, load_pose, save_pose
 
 
 class SliderWindow:
-    def __init__(self, root, preview, angles, output):
+    def __init__(self, root, preview, angles, output, overwrite=False):
         import tkinter as tk
         from tkinter import ttk
 
         self.root, self.preview, self.output = root, preview, output
+        self.overwrite = overwrite
         self.dirty = True
         self.pending = None
         self.values, self.entries = [], []
@@ -103,7 +104,7 @@ class SliderWindow:
         filename = filedialog.asksaveasfilename(
             parent=self.root, title='Save Zero Pose', defaultextension='.json',
             filetypes=[('JSON', '*.json')], initialdir=str(self.output.parent.resolve()),
-            initialfile=self.output.name, confirmoverwrite=True,
+            initialfile=self.output.name, confirmoverwrite=False,
         )
         if not filename:
             return
@@ -111,13 +112,13 @@ class SliderWindow:
             # Apply the exact values being saved to the preview first.
             self.preview.update(angles)
             self.dirty = False
-            Path(filename).write_text(json.dumps(pose_document(angles), indent=2) + '\n')
+            replaced = save_pose(filename, angles, overwrite=self.overwrite)
         except (OSError, ValueError) as exc:
             messagebox.showerror('Save Failed', str(exc), parent=self.root)
             return
         self.output = Path(filename)
         self.status.set(f'Saved: {filename}')
-        print(f'Saved zero pose: {filename}', flush=True)
+        print(f'覆盖 {filename}' if replaced else f'Saved zero pose: {filename}', flush=True)
 
     def refresh(self):
         from tkinter import messagebox
@@ -147,8 +148,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', type=Path, help='Load a saved zero-pose JSON')
     parser.add_argument('--output', type=Path, default=Path('uarm.zero-pose.json'), help='Default filename in the Save Pose dialog')
+    parser.add_argument('--overwrite', action='store_true', help='Allow replacing an existing pose file when saving')
     parser.add_argument('--memory-limit', default='25%')
     args = parser.parse_args()
+    if args.output.exists() and not args.overwrite:
+        raise FileExistsError(f'{args.output} already exists. Use --overwrite to replace it.')
     angles = load_pose(args.input) if args.input else [0.] * 6
     try:
         import tkinter as tk
@@ -162,7 +166,7 @@ def main():
     preview = None
     try:
         preview = ZeroPosePreview(args.memory_limit)
-        SliderWindow(root, preview, angles, args.output)
+        SliderWindow(root, preview, angles, args.output, overwrite=args.overwrite)
         root.deiconify()
         root.mainloop()
     except KeyboardInterrupt:

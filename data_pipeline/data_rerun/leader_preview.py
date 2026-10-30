@@ -199,13 +199,13 @@ class LeaderPreview:
             self.recording.log(f'/leader_joints/{joint.name}', self.rr.Scalars(float(live[index])))
         for joint, value in zip(self.leader_joints, live):
             self.recording.log(f'/poses/leader/{joint.name}', joint.compute_transform(float(value), clamp=False))
-        status = message or 'ECO63 is at the origin. The U-Arm Config 2 base is at Y=0.55 m, displayed at 3x scale with its base on the ground. Model zero is the CAD assembly pose. No physical follower is connected.'
+        status = message or 'ECO63 is at the origin. The U-Arm Config 2 base is at Y=0.55 m, displayed at 3x scale with its base on the ground. Zero angles use the current URDF rest pose. No physical follower is connected.'
         if target_deg is not None:
             status += '\nThe follower holds the reference pose. The leader follows encoder readings.'
         elif self.calibration.document.get('zero_raw') is None:
             status += '\nFollower mapping is not calibrated: showing changes relative to startup.'
         if self.model_calibration is None:
-            status += '\nLeader model is not calibrated: startup pose is temporarily treated as CAD zero. Use --calibrate-model to calibrate each joint.'
+            status += '\nLeader model is not calibrated: startup pose is temporarily treated as URDF zero. Use --calibrate-model to calibrate each joint.'
         if outside:
             status += '\nOutside URDF limits: ' + ', '.join(outside)
         if status != self.last_status:

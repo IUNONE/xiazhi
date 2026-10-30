@@ -49,6 +49,23 @@ def load_pose(path, urdf=LEADER_URDF):
     return validate_angles(angles[name] for name in JOINT_NAMES)
 
 
+def save_pose(path, angles, *, overwrite=False):
+    """Save exclusively by default; return whether an existing file was replaced."""
+    path = Path(path)
+    text = json.dumps(pose_document(angles), indent=2) + '\n'
+    replaced = False
+    try:
+        stream = path.open('x', encoding='utf-8')
+    except FileExistsError:
+        if not overwrite:
+            raise FileExistsError(f'{path} already exists. Use --overwrite to replace it.') from None
+        stream = path.open('w', encoding='utf-8')
+        replaced = True
+    with stream:
+        stream.write(text)
+    return replaced
+
+
 class ZeroPosePreview:
     def __init__(self, memory_limit='25%'):
         import rerun as rr

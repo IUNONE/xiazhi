@@ -1,9 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="uarm_config2_leader">
   <!-- Joint axes reconstructed from circular features in the bundled assembled
-       STL meshes (meters), not from the ECO63 joint axes. All joint frames keep
-       the CAD orientation at q=0; each visual offset cancels its cumulative
-       joint translation.
+       STL meshes (meters), not from the ECO63 joint axes.
+       Default zero includes offsets from the original CAD assembly pose:
+       joint1=-10 deg, joint2=+55 deg, joint3=-150 deg.
+       These rotations are composed into each joint origin; visual offsets
+       and joint axes retain their local-frame definitions.
        joint1 and joint4 axis signs reversed after physical motion comparison.
        Encoder zero positions and signs are stored in the model calibration. -->
   <link name="base_link">
@@ -33,7 +35,7 @@
     </visual>
   </link>
   <joint name="joint1" type="revolute">
-    <origin xyz="0.1207304713 0.2031548637 0.1353154913" rpy="0 0 0" />
+    <origin xyz="0.1207304713 0.2031548637 0.1353154913" rpy="0.065655549893 -0.161673104370 -0.012438471256" />
     <parent link="base_link" />
     <child link="link1" />
     <axis xyz="-0.3695929294 0.9283029711 0.0406775179" />
@@ -48,7 +50,7 @@
     </visual>
   </link>
   <joint name="joint2" type="revolute">
-    <origin xyz="0.0033769596 0.0532948105 -0.0088079311" rpy="0 0 0" />
+    <origin xyz="0.0033769596 0.0532948105 -0.0088079311" rpy="0.883730524893 0.384319890433 -0.007360790781" />
     <parent link="link1" />
     <child link="link2" />
     <axis xyz="0.9104260564 0.3705284163 -0.1839377299" />
@@ -63,7 +65,7 @@
     </visual>
   </link>
   <joint name="joint3" type="revolute">
-    <origin xyz="-0.0516695545 0.0745506831 -0.1053254329" rpy="0 0 0" />
+    <origin xyz="-0.0516695545 0.0745506831 -0.1053254329" rpy="-2.514047085138 0.127563143479 0.814471975469" />
     <parent link="link2" />
     <child link="link3" />
     <axis xyz="0.9104257971 0.3705305088 -0.1839347981" />
