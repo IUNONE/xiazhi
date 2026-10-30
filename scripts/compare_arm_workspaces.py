@@ -109,6 +109,9 @@ def measured_bounds(path, device_path, calibration_path):
 
 def render(path, clouds, skeletons, args, measured):
     import matplotlib
+    import mpl_toolkits
+    # ROS venvs expose Ubuntu's older mpl_toolkits; pair it with this Matplotlib.
+    mpl_toolkits.__path__ = [str(Path(matplotlib.__file__).resolve().parent.parent / 'mpl_toolkits')]
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     from matplotlib.animation import FFMpegWriter

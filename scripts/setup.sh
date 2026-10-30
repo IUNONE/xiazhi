@@ -408,6 +408,11 @@ parts = version.split(".")
 if parts[:2] != ["0", "33"]:
     sys.exit(1)
 import numpy, matplotlib
+from pathlib import Path
+import mpl_toolkits
+# Match the plotting script: avoid Ubuntu mpl_toolkits in this system-site venv.
+mpl_toolkits.__path__ = [str(Path(matplotlib.__file__).resolve().parent.parent / "mpl_toolkits")]
+from mpl_toolkits.mplot3d import Axes3D
 numpy_version = tuple(map(int, numpy.__version__.split(".")[:2]))
 matplotlib_version = tuple(map(int, matplotlib.__version__.split(".")[:2]))
 sys.exit(0 if (2, 0) <= numpy_version < (2, 3) and (3, 9) <= matplotlib_version < (4, 0) else 1)' || return 1
