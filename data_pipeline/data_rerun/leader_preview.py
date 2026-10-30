@@ -29,9 +29,9 @@ LEADER_BASE_ROTATION = np.array([
 LEADER_BASE_ROTATED_ANCHOR = np.array([0.18929311440502936, -0.08889246692740739, 0.07760459952730553])
 LEADER_BASE_POSITION = (0.0, 0.55, 0.0)
 LEADER_DISPLAY_SCALE = 2.0
-# Align the ECO63 shoulder axis with the U-Arm shoulder axis at the current
-# URDF zero pose. This rotation is display-only, around world Z.
-FOLLOWER_DISPLAY_YAW_DEG = -88.49450646
+# Shoulder-plane alignment plus a 180-degree turn to match the arms' facing
+# direction. This rotation is display-only, around world Z.
+FOLLOWER_DISPLAY_YAW_DEG = 91.50549354
 _follower_yaw = np.deg2rad(FOLLOWER_DISPLAY_YAW_DEG)
 FOLLOWER_BASE_ROTATION = np.array([
     [np.cos(_follower_yaw), -np.sin(_follower_yaw), 0.0],
