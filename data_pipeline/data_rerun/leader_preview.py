@@ -122,6 +122,8 @@ class LeaderPreview:
             self.recording.send_blueprint(blueprint)
             self.follower.log_urdf_to_recording(self.recording)
             self.leader.log_urdf_to_recording(self.recording)
+            self._log_joint_labels('leader', self.leader_joints, [255, 190, 60])
+            self._log_joint_labels('follower', self.joints, [80, 200, 255])
             self._log_base('follower', self.follower.root_link().name, (0.0, 0.0, 0.0))
             self._log_base(
                 'leader', self.leader.root_link().name,
@@ -145,6 +147,21 @@ class LeaderPreview:
             self.rr.Transform3D(translation=list(translation), mat3x3=rotation, parent_frame='world', child_frame=f'{name}/{root_link}'),
             static=True,
         )
+
+    def _log_joint_labels(self, name, joints, color):
+        for index, joint in enumerate(joints, start=1):
+            # A revolute joint's child-frame origin is its pivot. Binding to
+            # that frame keeps labels attached through all upstream motion.
+            self.recording.log(
+                f'/{name}/joint_labels/{joint.name}',
+                self.rr.CoordinateFrame(f'{name}/{joint.child_link}'),
+                self.rr.Points3D(
+                    [[0.0, 0.0, 0.0]],
+                    labels=[f'joint_{index}'], show_labels=True,
+                    colors=[color], radii=0.006,
+                ),
+                static=True,
+            )
 
     def is_open(self):
         return self.viewer is not None and self.viewer.poll() is None
