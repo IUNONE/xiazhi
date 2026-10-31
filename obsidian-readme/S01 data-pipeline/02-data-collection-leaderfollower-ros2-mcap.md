@@ -132,7 +132,9 @@ python scripts/collect_data_ros2.py \
   --leader-model-calibration configs/teleoperation/uarm.model.calibrated.json \
   --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
   --leader-baudrate 115200 \
-  --control-hz 30
+  --control-hz 30 \
+  --speed 20 \
+  --viewer
   # --init-joints='[0,60,-135,75,90,0]'
 ```
 

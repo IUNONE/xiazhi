@@ -20,6 +20,7 @@ class LeaderConfig:
     runtime_config: Path | None = None
     model_calibration: Path | None = None
     mapping: Path | None = None
+    follow_speed_scale: float | None = None
 
     def validate(self, *, require_homing=True) -> None:
         if not self.port or self.baudrate <= 0:
@@ -28,6 +29,9 @@ class LeaderConfig:
             raise ValueError("低跟随 control_hz 必须在 1..50 Hz")
         if not math.isfinite(self.stale_after_s) or not 0.1 <= self.stale_after_s <= 1:
             raise ValueError("主臂数据有效期必须在 0.1..1 秒")
+        if self.follow_speed_scale is not None and (
+                not math.isfinite(self.follow_speed_scale) or not 0 < self.follow_speed_scale <= 1):
+            raise ValueError('follow-speed-scale 必须满足 0 < 值 <= 1')
         from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
         calibration = load_absolute_calibration(self, require_home=require_homing)
         if require_homing:
@@ -114,12 +118,16 @@ class RuntimeSettings:
     document: dict
 
     @classmethod
-    def load(cls, path: Path | None):
+    def load(cls, path: Path | None, *, velocity_scale: float | None = None):
         if path is None:
             path = Path(__file__).resolve().parents[3] / 'configs/teleoperation/eco63_runtime.json'
         document = json.loads(path.read_text())
         if document.get('version') != 1:
             raise ValueError('运行配置 version 必须为 1')
+        if velocity_scale is not None:
+            if not math.isfinite(velocity_scale) or not 0 < velocity_scale <= 1:
+                raise ValueError('follow-speed-scale 必须满足 0 < 值 <= 1')
+            document['velocity_scale'] = velocity_scale
         return cls(document)
 
     def leader_motion(self) -> dict:

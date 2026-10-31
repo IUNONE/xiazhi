@@ -39,10 +39,11 @@ def collect_ros_session(collector, path, manifest, keys):
     from data_pipeline.data_collection.teleoperation.mapping import load_absolute_calibration
     manual_alignment = config.robot.init_joints_deg is None
     calibration = load_absolute_calibration(config.leader, require_home=not manual_alignment)
-    runtime = RuntimeSettings.load(config.leader.runtime_config)
+    runtime = RuntimeSettings.load(config.leader.runtime_config, velocity_scale=config.leader.follow_speed_scale)
     if not manual_alignment:
         runtime.homing(calibration)
     limits = runtime.follower_limits()
+    print(f"连续跟随速度比例: {runtime.document.get('velocity_scale', 0.1):g}；各轴速度上限: {np.rad2deg(limits.max_velocity_rad_s).round(2).tolist()} deg/s", flush=True)
     if not manual_alignment:
         collector._arm.validate_home(limits.lower_rad, limits.upper_rad)
     manifest.collection["teleoperation_runtime"] = runtime.document

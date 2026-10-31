@@ -69,7 +69,15 @@ def main() -> None:
         help="六维力拖动轻重模式，仅在 --drag-mode 1、2、3 时生效",
     )
     parser.add_argument("--disable-singular-wall", action="store_true")
-    parser.add_argument("--home-return-speed", type=int, default=10)
+    parser.add_argument(
+        "--speed", type=int,
+        help="主从模式统一速度比例，1..100：MoveJ 使用该值，连续跟随使用该值/100",
+    )
+    parser.add_argument(
+        "--movej-speed", "--home-return-speed",
+        dest="home_return_speed", type=int,
+        help="MoveJ 对齐/回位速度比例，1..100，默认 10；不改变按 r 后的连续跟随限速",
+    )
     parser.add_argument("--home-tolerance-deg", type=float, default=1.0)
     parser.add_argument("--extra-topic", action="append", default=[])
     parser.add_argument("--storage-id", choices=["sqlite3", "mcap"], default="mcap")
@@ -92,9 +100,21 @@ def main() -> None:
     parser.add_argument("--teleop-config", type=Path, help="独立运行配置；默认 configs/teleoperation/eco63_runtime.json")
     parser.add_argument("--leader-baudrate", type=int, default=115200)
     parser.add_argument("--control-hz", type=float, default=30)
+    parser.add_argument("--follow-speed-scale", type=float, help="连续跟随的关节限速比例，0 < 值 <= 1；省略则使用运行配置（默认 0.1），不改变 MoveJ 速度")
     parser.add_argument("--leader-stale-after-s", type=float, default=0.3)
     parser.add_argument("--unlock-leader", action="store_true", help="兼容参数；采集始终在扶稳后按 r 时卸力，连接时不卸力")
     args = parser.parse_args()
+    if args.speed is not None:
+        if not 1 <= args.speed <= 100:
+            parser.error("--speed 必须是 1..100 的整数百分比")
+        if args.teaching_mode != "leader-follower":
+            parser.error("--speed 需要 --teaching-mode leader-follower")
+        if args.home_return_speed is not None or args.follow_speed_scale is not None:
+            parser.error("--speed 不能与 --movej-speed / --home-return-speed / --follow-speed-scale 同时使用")
+        args.home_return_speed = args.speed
+        args.follow_speed_scale = args.speed / 100.0
+    elif args.home_return_speed is None:
+        args.home_return_speed = 10
     if args.viewer and args.teaching_mode != "leader-follower":
         parser.error("--viewer 需要 --teaching-mode leader-follower")
     leader = None
@@ -103,8 +123,9 @@ def main() -> None:
             parser.error("leader-follower 需要 --leader-port、--leader-config、--leader-model-calibration 和 --leader-follower-mapping")
         leader = LeaderConfig(args.leader_port, args.leader_config, args.leader_baudrate,
                               args.control_hz, args.leader_stale_after_s, args.teleop_config,
-                              args.leader_model_calibration, args.leader_follower_mapping)
-    elif args.leader_port or args.leader_config or args.leader_model_calibration or args.leader_follower_mapping or args.unlock_leader or args.teleop_config:
+                              args.leader_model_calibration, args.leader_follower_mapping,
+                              follow_speed_scale=args.follow_speed_scale)
+    elif args.leader_port or args.leader_config or args.leader_model_calibration or args.leader_follower_mapping or args.unlock_leader or args.teleop_config or args.follow_speed_scale is not None:
         parser.error("主臂参数需要 --teaching-mode leader-follower")
 
     cameras = tuple(
