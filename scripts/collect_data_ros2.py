@@ -92,7 +92,7 @@ def main() -> None:
     parser.add_argument("--replay-pre-roll-s", type=float, default=1.0)
     parser.add_argument("--replay-post-roll-s", type=float, default=0.5)
     parser.add_argument("--teaching-mode", choices=["drag", "leader-follower"], default="drag")
-    parser.add_argument("--viewer", action="store_true", help="轻量从臂目标预览：i/r 关闭，s 后重开；仅 leader-follower")
+    parser.add_argument("--viewer", action="store_true", help="本地网页控制台：目标预览、Init/Record/Stop/Quit、片段列表；仅 leader-follower")
     parser.add_argument("--leader-port")
     parser.add_argument("--leader-config", type=Path, help="主臂编码器设备配置")
     parser.add_argument("--leader-model-calibration", type=Path, help="1.1 主臂实物到 URDF 的标定")

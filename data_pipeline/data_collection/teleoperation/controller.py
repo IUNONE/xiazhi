@@ -36,7 +36,7 @@ class TeleoperationController:
         self._heartbeat = time.monotonic()
 
     def start(self) -> None:
-        initial = self.arm.read_observation().joint_position.astype(float)
+        initial = self.arm.latest_observation().joint_position.astype(float)
         c = self.calibration
         if initial.shape != (6,) or not np.isfinite(initial).all() or np.any(initial < self.limits.lower_rad) or np.any(initial > self.limits.upper_rad):
             raise ValueError("从臂当前位置超出 URDF 关节限位")
@@ -54,7 +54,7 @@ class TeleoperationController:
 
     def check(self) -> None:
         if self._failure is not None:
-            raise RuntimeError("遥操控制已失败") from self._failure
+            raise RuntimeError(f"遥操控制已停止: {self._failure}") from self._failure
 
     def _run(self) -> None:
         c = self.calibration
@@ -76,10 +76,9 @@ class TeleoperationController:
                     raise ValueError("主臂目标超出从臂关节限位")
                 dt = min(max(now-previous_time, 0), interval)
                 target = last + np.clip(desired-last, -np.asarray(self.limits.max_velocity_rad_s)*dt, np.asarray(self.limits.max_velocity_rad_s)*dt)
-                actual = self.arm.read_observation().joint_position
-                if np.max(np.abs(target-actual)) > self.limits.max_tracking_error_rad:
-                    raise ValueError("从臂跟随误差超过运行配置阈值")
-                # Check again after potentially blocking hardware feedback.
+                # Feedback freshness is still required; position lag alone does
+                # not abort teleoperation. Reading this cache never waits for a frame.
+                self.arm.latest_observation()
                 self.leader.latest()
                 if self._stop.is_set():
                     break

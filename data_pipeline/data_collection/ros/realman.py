@@ -50,6 +50,7 @@ class RealManRosArm:
         self._movej_type: Any | None = None
         self._condition = threading.Condition()
         self._latest_joint_position: np.ndarray | None = None
+        self._latest_joint_received_at: float | None = None
         self._joint_sequence = 0
         self._last_read_joint_sequence = 0
         self._movej_result_sequence = 0
@@ -80,6 +81,7 @@ class RealManRosArm:
             return
         with self._condition:
             self._latest_joint_position = joints.copy()
+            self._latest_joint_received_at = time.monotonic()
             self._joint_sequence += 1
             self._condition.notify_all()
 
@@ -284,6 +286,16 @@ class RealManRosArm:
             joints = self._latest_joint_position.copy()
             self._last_read_joint_sequence = self._joint_sequence
         return RosArmObservation(joint_position=joints)
+
+    def latest_observation(self) -> RosArmObservation:
+        """Read cached feedback without blocking; reject stale/disconnected data."""
+        if not self.is_connected:
+            raise RuntimeError('RealMan ROS 控制节点未连接')
+        with self._condition:
+            if (self._latest_joint_position is None or self._latest_joint_received_at is None
+                    or time.monotonic() - self._latest_joint_received_at > self.sample_timeout_s):
+                raise TimeoutError('从臂 /joint_states 反馈过期，停止跟随')
+            return RosArmObservation(joint_position=self._latest_joint_position.copy())
 
     def prepare_teleoperation(self) -> None:
         self.sample_timeout_s = min(self.sample_timeout_s, 0.2)
@@ -548,6 +560,7 @@ class RealManRosArm:
         with self._condition:
             result_sequence = self._movej_result_sequence
             self._movej_publisher.publish(message)
+            print(f'MoveJ 目标已提交，速度比例 {message.speed}，正在等待到位确认。', flush=True)
             deadline = time.monotonic() + max(60.0, self.startup_timeout_s)
             while self._movej_result_sequence <= result_sequence:
                 remaining = deadline - time.monotonic()

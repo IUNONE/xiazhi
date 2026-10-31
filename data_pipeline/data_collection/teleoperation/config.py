@@ -167,9 +167,8 @@ class RuntimeSettings:
         root = ET.fromstring(build_robot_urdf(DEFAULT_ROBOT_XACRO))
         lower, upper, velocity = [], [], []
         factor = float(self.document.get('velocity_scale', 0.1))
-        error = float(self.document.get('max_tracking_error_rad', 0.2))
-        if not math.isfinite(factor) or not 0 < factor <= 1 or not math.isfinite(error) or error <= 0:
-            raise ValueError('运行配置的速度比例或跟随误差无效')
+        if not math.isfinite(factor) or not 0 < factor <= 1:
+            raise ValueError('运行配置的速度比例无效')
         joints = {joint.attrib['name']: joint for joint in root.findall('joint')}
         for name in (f'joint{i}' for i in range(1,7)):
             limit = joints[name].find('limit')
@@ -177,7 +176,7 @@ class RuntimeSettings:
             if not all(math.isfinite(v) for v in (lo,hi,speed)) or lo >= hi or speed <= 0:
                 raise ValueError(f'URDF 关节限制无效: {name}')
             lower.append(lo); upper.append(hi); velocity.append(speed*factor)
-        return FollowerLimits(tuple(lower), tuple(upper), tuple(velocity), error)
+        return FollowerLimits(tuple(lower), tuple(upper), tuple(velocity))
 
 
 @dataclass(frozen=True)
@@ -185,4 +184,3 @@ class FollowerLimits:
     lower_rad: tuple[float, ...]
     upper_rad: tuple[float, ...]
     max_velocity_rad_s: tuple[float, ...]
-    max_tracking_error_rad: float

@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import select
+import os
 import sys
 import termios
 import tty
+import time
 from types import TracebackType
 
 
 class TerminalKeyReader:
     """读取 POSIX 交互终端中的单键采集指令。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, allow_non_tty=False) -> None:
+        self.allow_non_tty = allow_non_tty
         self._fd: int | None = None
         self._old_settings: list | None = None
 
     def __enter__(self) -> TerminalKeyReader:
         if not sys.stdin.isatty():
+            if self.allow_non_tty:
+                return self
             raise RuntimeError(
                 "采集必须在交互式 TTY 中运行，不允许无确认自动开始"
             )
@@ -37,11 +42,17 @@ class TerminalKeyReader:
 
     def read(self, timeout_s: float = 0.1) -> str | None:
         if self._fd is None:
+            if self.allow_non_tty:
+                time.sleep(max(0., timeout_s))
+                return None
             raise RuntimeError("TerminalKeyReader 尚未进入上下文")
         ready, _, _ = select.select([sys.stdin], [], [], timeout_s)
         if not ready:
             return None
-        key = sys.stdin.read(1).lower()
+        data = os.read(self._fd, 1)
+        if not data:
+            return 'q'
+        key = data.decode('ascii', errors='ignore').lower()
         if key == "\x03":
             raise KeyboardInterrupt
         return key

@@ -47,30 +47,59 @@ def collect_ros_session(collector, path, manifest, keys):
     if not manual_alignment:
         collector._arm.validate_home(limits.lower_rad, limits.upper_rad)
     manifest.collection["teleoperation_runtime"] = runtime.document
-    manifest.collection["follower_limits"] = {"lower_rad": limits.lower_rad, "upper_rad": limits.upper_rad, "max_velocity_rad_s": limits.max_velocity_rad_s, "max_tracking_error_rad": limits.max_tracking_error_rad}
+    manifest.collection["follower_limits"] = {"lower_rad": limits.lower_rad, "upper_rad": limits.upper_rad, "max_velocity_rad_s": limits.max_velocity_rad_s}
     leader = ZhonglingLeader(config.leader, calibration)
     sink = _CommandSink(collector._arm)
     controller = journal = recorder = episode = None
     preview = None
+    busy = None
+    last_dashboard = 0.
     failure = None
     reason = 'q'
     ready = False
     index = 0
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='episode-io')
 
-    def refresh_preview(sample=None):
-        if preview is None or not preview.visible:
+    def refresh_preview(sample=None, *, force=False):
+        nonlocal last_dashboard
+        if preview is None:
             return
-        if not manual_alignment and controller is None and not ready:
-            target = np.deg2rad(config.robot.init_joints_deg)
-            caption = 'Configured init target. Press i to align; preview closes on i.'
-        else:
-            sample = leader.latest() if sample is None else sample
-            target = calibration.joint_positions(sample.positions)
-            caption = ('Live mapped target before rate limiting. The real follower is STILL FOLLOWING after s.'
-                       if controller is not None else
-                       'Live mapped target. Hold the leader still and press i to align the real follower.')
-        preview.submit(target, caption)
+        now = time.monotonic()
+        if not force and now - last_dashboard < .15:
+            return
+        last_dashboard = now
+        sample = leader.latest() if sample is None else sample
+        target = (np.deg2rad(config.robot.init_joints_deg)
+                  if not manual_alignment and controller is None and not ready
+                  else calibration.joint_positions(sample.positions))
+        phase = busy or ('recording' if episode is not None else 'following' if controller is not None else 'ready' if ready else 'waiting')
+        messages = {
+            'waiting': 'Position and support the leader. Init will move the REAL follower to its mapped target.',
+            'ready': 'Follower aligned. Support the leader before Record releases its torque.',
+            'following': 'Episode saved. The real follower is STILL FOLLOWING the leader. Stop recording does not stop motion.',
+            'recording': 'Recording and following. Stop recording saves this episode and keeps following.',
+            'aligning': 'Moving the real follower. Keep the leader still. Preview is paused.',
+            'starting': 'Preparing recording and releasing leader torque. Please wait.',
+            'saving': 'Saving this episode. The real follower is still following.',
+            'quitting': 'Requesting software stop and closing the session.',
+        }
+        allowed = ['quit', 'abort']
+        if not busy:
+            if episode is not None: allowed.append('stop')
+            else:
+                allowed.append('init')
+                if ready or controller is not None: allowed.append('record')
+        outside = [f'joint_{i+1}' for i, value in enumerate(target) if not limits.lower_rad[i] <= value <= limits.upper_rad[i]]
+        if outside:
+            allowed = [a for a in allowed if a not in ('init', 'record')]
+        preview.publish({
+            'phase': phase, 'allowed': allowed,
+            'message': ('Target outside joint limits: ' + ', '.join(outside)) if outside else messages[phase],
+            'task': config.task, 'scene': config.scene, 'session_id': config.session_id,
+            'output_path': str(path), 'control_hz': config.leader.control_hz,
+            'following': controller is not None, 'target_deg': np.rad2deg(target).tolist(),
+            'episodes': [dict(e) for e in manifest.episodes],
+        })
 
     def poll():
         collector._ensure_processes_alive()
@@ -91,6 +120,8 @@ def collect_ros_session(collector, path, manifest, keys):
                 if allow_quit:
                     poll()
                 else:
+                    if preview is not None:
+                        preview.check_abort()
                     if controller is not None:
                         controller.heartbeat()
                     refresh_preview()
@@ -125,11 +156,11 @@ def collect_ros_session(collector, path, manifest, keys):
     try:
         leader.connect()
         if config.viewer:
-            from data_pipeline.data_rerun.collection_preview import CollectionTargetPreview
-            preview = CollectionTargetPreview(calibration.document['urdf_mapping']['follower_urdf_sha256'])
-            preview.show()
-            refresh_preview()
-            print('从臂目标预览正在打开；按 i/r 关闭，按 s 保存后重新打开。预览不代表真实从臂位置。', flush=True)
+            from data_pipeline.data_collection.web.dashboard import Dashboard, DashboardKeys
+            preview = Dashboard(calibration.document['urdf_mapping']['follower_urdf_sha256'])
+            keys = DashboardKeys(keys, preview)
+            refresh_preview(force=True)
+            print('网页与终端均可操作。Stop recording 只保存片段；Abort 对应 Ctrl-C 软件停止并退出。', flush=True)
         if manual_alignment:
             print('未指定 init：请手动将主臂摆到合适位置并扶稳，按 i 让从臂对齐当前主臂。主臂不会自动回位或卸力；对齐后按 r 开始。按 q 退出。', flush=True)
         else:
@@ -146,6 +177,8 @@ def collect_ros_session(collector, path, manifest, keys):
                 journal.drain()
             key = keys.read(timeout_s=0.03)
             if key == 'q':
+                busy = 'quitting'
+                refresh_preview(force=True)
                 if controller is not None:
                     controller.stop()
                     controller = None
@@ -155,19 +188,25 @@ def collect_ros_session(collector, path, manifest, keys):
                 if episode is not None:
                     print('正在录制，请先按 s 保存，再按 i 对齐或回位。', flush=True)
                     continue
+                busy = 'aligning'
+                refresh_preview(force=True)
+                i_started = time.monotonic()
+                print('收到 i，正在准备从臂对齐。', flush=True)
                 ready = False
                 if controller is not None:
                     controller.stop()
                     controller = None
                 if manual_alignment:
-                    sample = leader.read_once()
+                    sample = leader.latest()
                     target = np.asarray(calibration.joint_positions(sample.positions), dtype=float)
                     if target.shape != (6,) or not np.isfinite(target).all() or np.any(target < limits.lower_rad) or np.any(target > limits.upper_rad):
+                        busy = None
                         print('当前主臂姿态映射后的从臂目标无效或超出限位。未发送运动指令，请调整主臂后再按 i。', flush=True)
                         continue
                     if preview is not None:
                         preview.hide()
                     print(f'请扶稳主臂并保持不动。从臂正移动到当前主臂对应位置 {np.rad2deg(target).round(2).tolist()}°；不录包。', flush=True)
+                    print(f'i 目标准备耗时: {(time.monotonic()-i_started)*1000:.1f} ms；主臂样本年龄: {(time.monotonic_ns()-sample.timestamp_ns)/1e6:.1f} ms', flush=True)
                     operation(lambda: collector._arm.move_to_joint_pose(target))
                     ready = True
                     print('从臂已对齐。请继续扶稳主臂，按 r 卸力并开始跟随、录制。', flush=True)
@@ -179,6 +218,8 @@ def collect_ros_session(collector, path, manifest, keys):
                     operation(collector._arm.restore_home)
                     ready = True
                     print('主从已到 init。请扶好主臂！按 r 卸载主臂力矩并开始跟随、录制。', flush=True)
+                busy = None
+                refresh_preview(force=True)
             elif key == 'r':
                 if episode is not None:
                     print('当前 episode 正在录制；按 s 保存。', flush=True)
@@ -186,6 +227,10 @@ def collect_ros_session(collector, path, manifest, keys):
                 if not ready and controller is None:
                     print('请先手动摆好主臂并按 i 对齐从臂。' if manual_alignment else '请先按 i 完成主从回位。', flush=True)
                     continue
+                busy = 'starting'
+                refresh_preview(force=True)
+                r_started = time.monotonic()
+                print('收到 r，正在启动录制；订阅就绪后卸力并开始跟随。', flush=True)
                 if preview is not None:
                     preview.hide()
                 episode_path = config.episode_output_path(index)
@@ -201,16 +246,19 @@ def collect_ros_session(collector, path, manifest, keys):
                     if recorder.poll() is not None or time.monotonic() > deadline:
                         raise TimeoutError('rosbag 未订阅遥操 action')
                     time.sleep(0.03)
+                recorder_ready = time.monotonic()
                 journal = CommandLog(path / 'teleoperation' / f'episode_{index:06d}.jsonl')
                 sink.attach(journal)
                 if controller is None:
-                    leader.read_once()
+                    leader.latest()
                     leader.release_torque(channels=calibration.joint_indices)
-                    leader.read_once()
+                    leader.latest()
                     controller = TeleoperationController(collector._arm, leader, config.leader, calibration, limits, sink)
                     controller.start()
                 ready = False
-                print(f'episode {index:06d} 录制中；按 s 保存并继续跟随。', flush=True)
+                print(f'episode {index:06d} 录制中；按 s 保存并继续跟随。录制准备 {(recorder_ready-r_started)*1000:.1f} ms，卸力/启动 {(time.monotonic()-recorder_ready)*1000:.1f} ms', flush=True)
+                busy = None
+                refresh_preview(force=True)
             elif key == 's':
                 if episode is None:
                     if preview is not None:
@@ -218,7 +266,10 @@ def collect_ros_session(collector, path, manifest, keys):
                         refresh_preview()
                     print('当前未录制。跟随状态不变；按 i 对齐当前主臂，或 r 开始录制。' if manual_alignment else '当前未录制。跟随状态不变；按 i 回位或 r 开始录制。', flush=True)
                     continue
+                busy = 'saving'
+                refresh_preview(force=True)
                 finish_episode('s')
+                busy = None
                 if preview is not None:
                     preview.show()
                     refresh_preview()
@@ -242,8 +293,6 @@ def collect_ros_session(collector, path, manifest, keys):
         if recorder is not None:
             operations.append(lambda: collector._stop_process(recorder))
         operations.append(leader.disconnect)
-        if preview is not None:
-            operations.append(preview.close)
         for close in operations:
             try:
                 close()
@@ -252,6 +301,17 @@ def collect_ros_session(collector, path, manifest, keys):
         if episode is not None:
             manifest.finish_episode(episode, status='failed', stop_reason=reason, error=failure)
         manifest.write(path)
+        if preview is not None:
+            preview.publish({
+                'phase': 'failed' if failure else 'finished', 'allowed': [],
+                'message': 'Session aborted or failed. Check the terminal for stop and cleanup details.' if failure else 'Session finished. No automatic return motion.',
+                'task': config.task, 'scene': config.scene, 'session_id': config.session_id,
+                'output_path': str(path), 'control_hz': config.leader.control_hz,
+                'following': False, 'target_deg': [0.] * 6,
+                'episodes': [dict(e) for e in manifest.episodes],
+            })
+            time.sleep(.3)  # Let the page receive final episode statuses after motion has stopped.
+            preview.close()
         print('会话已结束；主臂力矩状态未自动切换，请扶稳或放置好主臂。', flush=True)
     if failure is not None:
         raise failure

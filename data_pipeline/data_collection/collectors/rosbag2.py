@@ -393,7 +393,7 @@ class Rosbag2Collector:
         cleanup_failure: BaseException | None = None
 
         try:
-            with TerminalKeyReader() as keys:
+            with TerminalKeyReader(allow_non_tty=self.config.viewer and self.config.teaching_mode == "leader-follower") as keys:
                 for command in self._robot_commands():
                     self._start(command)
                 for camera in self.config.cameras:

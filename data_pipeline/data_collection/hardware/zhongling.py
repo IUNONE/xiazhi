@@ -221,6 +221,9 @@ class ZhonglingLeader:
         try:
             while not self._stop.is_set():
                 self.read_once()
+                # Yield between scans so waiting torque/stop commands can acquire
+                # the serial lock instead of losing it to another immediate scan.
+                self._stop.wait(0.001)
         except BaseException as exc:
             with self._lock:
                 self._failure = exc

@@ -116,7 +116,7 @@ class CollectionConfig:
 
     def validate(self) -> None:
         if self.viewer and self.teaching_mode != 'leader-follower':
-            raise ValueError('--viewer 目标预览仅支持 leader-follower 模式')
+            raise ValueError('--viewer 网页控制台仅支持 leader-follower 模式')
         if self.teaching_mode not in {"drag", "leader-follower"}:
             raise ValueError("teaching_mode 必须为 drag 或 leader-follower")
         if self.teaching_mode == "leader-follower":
