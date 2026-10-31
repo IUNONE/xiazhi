@@ -78,9 +78,7 @@ python scripts/inspect_leader.py \
 
 ![[assets/leader_follower_rerun.webm]]
 
-带力矩的回位置测试:
-
-（未测试成功，疑似主臂舵机供电功率不足）
+带力矩的回位置测试: （ TODO:  未测试成功，疑似主臂舵机供电功率不足）
 
 ```bash
 python scripts/inspect_leader.py \
@@ -91,17 +89,6 @@ python scripts/inspect_leader.py \
   --follower_init_pose='[0,60,-135,75,90,0]' \
   --viewer
 ```
-
-
-```bash
-python scripts/compare_arm_workspaces.py \
-  --leader-config configs/teleoperation/zhongling_eco63.example.json \
-  --model-calibration-input configs/teleoperation/uarm.model.calibrated.json \
-  --leader-follower-mapping configs/teleoperation/leader_follower.mapping.json \
-  --samples 12000 --seconds 12 --fps 24 \
-  --output outputs/arm_workspaces.mp4
-```
-
 
 ## 2. 启动采集
 

@@ -106,7 +106,8 @@ check_1() {
 }
 install_1() { git submodule update --init --recursive; }
 # python3-tk provides the offline leader/follower slider GUI; numpy comes from system packages.
-PACKAGES=(git git-lfs build-essential cmake pkg-config python3-venv python3-tk python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
+# ffmpeg provides the MP4 encoder used by compare_arm_workspaces.py.
+PACKAGES=(git git-lfs ffmpeg build-essential cmake pkg-config python3-venv python3-tk python3-colcon-common-extensions python3-rosdep python3-numpy python3-pil python3-yaml python3-serial ros-humble-rosbag2-py ros-humble-rosbag2-storage-mcap ros-humble-rosbag2-storage-default-plugins ros-humble-moveit ros-humble-controller-interface ros-humble-controller-manager-msgs ros-humble-controller-manager libgflags-dev nlohmann-json3-dev ros-humble-image-transport ros-humble-image-transport-plugins ros-humble-compressed-image-transport ros-humble-image-publisher ros-humble-camera-info-manager ros-humble-diagnostic-updater ros-humble-diagnostic-msgs ros-humble-statistics-msgs ros-humble-xacro ros-humble-backward-ros libdw-dev libssl-dev mesa-utils libgl1 libgoogle-glog-dev)
 # These bundled U-Arm meshes are binary STL files stored in Git LFS.
 check_leader_meshes() {
     /usr/bin/python3 - "$ROOT" <<'PYMESH'

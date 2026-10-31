@@ -173,7 +173,7 @@ def collect_ros_session(collector, path, manifest, keys):
                 sink.attach(journal)
                 if controller is None:
                     leader.read_once()
-                    leader.release_torque()
+                    leader.release_torque(channels=calibration.joint_indices)
                     leader.read_once()
                     controller = TeleoperationController(collector._arm, leader, config.leader, calibration, limits, sink)
                     controller.start()
