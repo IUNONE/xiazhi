@@ -4,6 +4,7 @@ import math
 import os
 import queue
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -31,11 +32,32 @@ class Rosbag2Collector:
             sample_timeout_s=config.sample_timeout_s,
         )
 
-    @staticmethod
-    def _robot_commands() -> tuple[list[str], ...]:
-        """返回机械臂驱动和状态发布器的最小启动命令。"""
+    def _robot_commands(self) -> tuple[list[str], ...]:
+        """Load model defaults, then override network settings from the CLI."""
+        from ament_index_python.packages import get_package_share_directory
+
+        driver_config = Path(get_package_share_directory('rm_driver')) / 'config' / 'rm_eco63_config.yaml'
+        if not driver_config.is_file():
+            raise FileNotFoundError(f'已安装的 RealMan 驱动配置不存在: {driver_config}')
+        # A connected UDP socket selects the local route without sending a
+        # control request. Feedback must return to this computer, not YAML's
+        # example address (which may belong to another host).
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route_socket:
+                route_socket.connect((self.config.robot.ip, self.config.robot.port))
+                udp_ip = route_socket.getsockname()[0]
+        except OSError as exc:
+            raise RuntimeError(f'无法确定到机械臂 {self.config.robot.ip} 的本机网卡地址，请检查有线网卡和路由') from exc
+        print(f'RealMan 连接参数: arm_ip={self.config.robot.ip}, tcp_port={self.config.robot.port}, udp_ip={udp_ip}', flush=True)
+        print(f'RealMan 模型参数文件: {driver_config}', flush=True)
         return (
-            ["ros2", "launch", "rm_driver", "rm_eco63_driver.launch.py"],
+            [
+                'ros2', 'run', 'rm_driver', 'rm_driver', '--ros-args',
+                '--params-file', str(driver_config),
+                '-p', f'arm_ip:={self.config.robot.ip}',
+                '-p', f'tcp_port:={self.config.robot.port}',
+                '-p', f'udp_ip:={udp_ip}',
+            ],
             [
                 "ros2",
                 "launch",

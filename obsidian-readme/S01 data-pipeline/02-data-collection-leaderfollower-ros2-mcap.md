@@ -74,16 +74,6 @@ python scripts/arm_joints.py \
 ![主从映射零位偏置|277](../assets/leader_follower_offset.png)
 
 
-检查已有映射，无需 `--output` 或 `--overwrite`：
-
-```bash
-python scripts/arm_joints.py \
-  --calibrate_leader_follwer \
-  --input configs/teleoperation/leader_follower.mapping.json
-```
-
-加载后会恢复从臂 offset 和各轴正负号，可拖动 `U-Arm Joints` 检查跟随，或点击 `Zero Leader` 归零。仅查看或拖动不会写文件。保存为新文件可直接选择新路径；覆盖已有文件仍需启动时指定 `--overwrite`。
-
 连接真实主臂检查完整映射：
 
 ```bash
@@ -110,6 +100,9 @@ python scripts/inspect_leader.py \
 ```
 
 ## 2. 启动采集
+
+采集启动时会将 `--robot-ip`、`--robot-port` 显式传给 `rm_driver`，并按到机械臂的本机路由选择 UDP 状态回报地址。终端会打印实际使用的 `arm_ip`、`tcp_port`、`udp_ip` 和安装目录中的驱动配置路径，便于核对。网页能打开只说明 Web 服务可达，控制连接还需对应的 TCP 端口可达。
+
 
 本机 ip 设置为 `192.168.1.100`，机械臂默认 ip 为 `192.168.1.18`
 
