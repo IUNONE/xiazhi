@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -35,7 +37,7 @@ class PendingFrame:
 
 @dataclass(frozen=True, slots=True)
 class LeRobotConversionConfig:
-    """Configuration for converting one raw rosbag2 episode to LeRobot."""
+    """Convert a raw session (or one rosbag2 episode) to one LeRobot dataset."""
 
     input_bag: Path
     output_root: Path
@@ -88,12 +90,14 @@ class Rosbag2ToLeRobotConverter:
         self.config = config
         self.action_topic = config.action_topic
         self.source_manifest = None
-        manifest_path = config.input_bag.parent / "session_manifest.json"
+        manifest_path = config.input_bag / "session_manifest.json"
+        if not manifest_path.is_file():
+            manifest_path = config.input_bag.parent / "session_manifest.json"
         if manifest_path.is_file():
             self.source_manifest = json.loads(manifest_path.read_text())
             for episode in self.source_manifest.get("episodes", []):
                 if Path(episode["output_path"]).name == config.input_bag.name and episode.get("status") != "completed":
-                    raise ValueError("输入 episode 未成功结束，请先审查失败记录")
+                    raise ValueError(f"输入 episode 未成功结束，请先审查失败记录: {config.input_bag}")
             action = self.source_manifest.get("action", {})
             if action.get("source") == "leader_follower_submitted_joint_target":
                 recorded_topic = action["topic"]
@@ -257,9 +261,32 @@ class Rosbag2ToLeRobotConverter:
             if observation is not None:
                 yield observation
 
-    def convert(self) -> Path:
-        if self.config.output_root.exists():
-            raise FileExistsError(f"输出路径已存在: {self.config.output_root}")
+    def _episode_paths(self) -> list[Path]:
+        source = self.config.input_bag
+        if source.is_file() or (source / "metadata.yaml").is_file():
+            return [source]
+        if not source.is_dir():
+            raise FileNotFoundError(f"输入目录不存在: {source}")
+        if not (source / "session_manifest.json").is_file() and any(source.glob("*.mcap")):
+            return [source]
+        episodes = sorted(
+            (path for path in source.iterdir()
+             if path.is_dir() and re.fullmatch(r"episode_\d+", path.name)),
+            key=lambda path: (int(path.name.split("_")[1]), path.name),
+        )
+        if not episodes:
+            raise ValueError(f"session 下没有 episode_<编号> 目录: {source}")
+        # Resolve against the current session, even if it was moved after recording.
+        if self.source_manifest is not None:
+            found = {path.name for path in episodes}
+            missing = [Path(item["output_path"]).name
+                       for item in self.source_manifest.get("episodes", [])
+                       if Path(item["output_path"]).name not in found]
+            if missing:
+                raise FileNotFoundError(f"session 缺少 manifest 中的 episode: {missing}")
+        return episodes
+
+    def _frames(self) -> Iterator[dict[str, Any]]:
         topics = {
             self.config.state_topic,
             self.config.ee_pose_topic,
@@ -273,13 +300,17 @@ class Rosbag2ToLeRobotConverter:
             storage_id=self.config.storage_id,
         ).iter_records(topics)
         observations = self._aligned_observations(records)
-        frames = observations if self.action_topic is not None else pair_next_joint_targets(observations)
-        try:
-            first_frame = next(frames)
-        except StopIteration as exc:
-            raise ValueError(
-                "没有完整的 observation/action；拖动需要两帧，遥操需要有效命令流"
-            ) from exc
+        yield from (observations if self.action_topic is not None
+                    else pair_next_joint_targets(observations))
+
+    def convert(self) -> Path:
+        if self.config.output_root.exists():
+            raise FileExistsError(f"输出路径已存在: {self.config.output_root}")
+        # Validate every episode's completion status before creating output.
+        converters = [
+            Rosbag2ToLeRobotConverter(replace(self.config, input_bag=path))
+            for path in self._episode_paths()
+        ]
 
         try:
             from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -288,28 +319,62 @@ class Rosbag2ToLeRobotConverter:
                 "需要 Python 3.12 和 third_party/lerobot 的 dataset 依赖"
             ) from exc
 
-        dataset = LeRobotDataset.create(
-            repo_id=self.config.repo_id,
-            fps=self.config.fps,
-            features=build_lerobot_features(first_frame, use_videos=self.config.use_videos),
-            root=self.config.output_root,
-            robot_type=self.config.robot_type,
-            use_videos=self.config.use_videos,
-            image_writer_threads=4,
-        )
+        dataset = None
+        features = None
+        episode_provenance = []
         try:
-            dataset.add_frame(first_frame)
-            for frame in frames:
-                dataset.add_frame(frame)
-            dataset.save_episode()
+            for index, converter in enumerate(converters):
+                path = converter.config.input_bag
+                print(f"[{index + 1}/{len(converters)}] 转换 {path.name}", flush=True)
+                frames = converter._frames()
+                try:
+                    first_frame = next(frames)
+                    episode_features = build_lerobot_features(
+                        first_frame, use_videos=self.config.use_videos,
+                    )
+                    if dataset is None:
+                        features = episode_features
+                        dataset = LeRobotDataset.create(
+                            repo_id=self.config.repo_id,
+                            fps=self.config.fps,
+                            features=deepcopy(features),
+                            root=self.config.output_root,
+                            robot_type=self.config.robot_type,
+                            use_videos=self.config.use_videos,
+                            image_writer_threads=4,
+                        )
+                    elif episode_features != features:
+                        raise ValueError(f"episode 的图像尺寸或 feature schema 不一致: {path}")
+                    dataset.add_frame(first_frame)
+                    frame_count = 1
+                    for frame in frames:
+                        dataset.add_frame(frame)
+                        frame_count += 1
+                    dataset.save_episode()
+                    episode_provenance.append({
+                        "episode_index": index,
+                        "source_episode": path.name,
+                        "source_path": str(path),
+                        "frame_count": frame_count,
+                    })
+                    print(f"  已保存 episode {index}: {frame_count} 帧", flush=True)
+                except StopIteration as exc:
+                    raise ValueError(
+                        f"{path}: 没有完整的 observation/action；"
+                        "拖动需要两帧，遥操需要有效命令流"
+                    ) from exc
+                finally:
+                    frames.close()
         finally:
-            dataset.finalize()
+            if dataset is not None:
+                dataset.finalize()
         provenance = {
             "source": "leader_follower_submitted_joint_target" if self.action_topic else "derived_next_joint_target",
             "unit": "rad", "topic": self.action_topic,
             "alignment": "first_command_at_or_after_observation" if self.action_topic else "next_observation",
             "tolerance_s": self.config.tolerance_s,
             "source_session": self.source_manifest,
+            "episodes": episode_provenance,
         }
         with (Path(dataset.root) / "action_provenance.json").open("x", encoding="utf-8") as stream:
             json.dump(provenance, stream, ensure_ascii=False, indent=2)

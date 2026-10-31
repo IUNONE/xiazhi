@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
+                "file": "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "02-data-collection-leaderfollower-ros2-mcap"
+              "title": "03-data-collection-mcap2lerobot"
             }
           }
         ]
@@ -190,10 +190,10 @@
   },
   "active": "5e97ae82ff3250ec",
   "lastOpenFiles": [
-    "assets/leader_follower_rerun.webm",
-    "assets/leader_follower_rerun_09-30.webm",
     "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
     "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
+    "assets/leader_follower_rerun.webm",
+    "assets/leader_follower_rerun_09-30.webm",
     "S01 data-pipeline/04-data-collect-rerun-visualization.md",
     "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
     "assets/leader_follower_offset.png",
