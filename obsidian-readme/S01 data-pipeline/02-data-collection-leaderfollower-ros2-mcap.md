@@ -21,6 +21,15 @@ LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 ```
 
 
+
+```bash
+# 检查相机序列号
+
+ros2 run orbbec_camera list_devices_node
+
+ARM_CAM_SN_1="CP0N763000ER"
+```
+
 ## 1.1 标定主臂零位和正方向
 
 根据终端和 rerun 画面提示，将 主臂依次摆到 零位 和 标定位。
@@ -65,6 +74,16 @@ python scripts/arm_joints.py \
 ![主从映射零位偏置|277](../assets/leader_follower_offset.png)
 
 
+检查已有映射，无需 `--output` 或 `--overwrite`：
+
+```bash
+python scripts/arm_joints.py \
+  --calibrate_leader_follwer \
+  --input configs/teleoperation/leader_follower.mapping.json
+```
+
+加载后会恢复从臂 offset 和各轴正负号，可拖动 `U-Arm Joints` 检查跟随，或点击 `Zero Leader` 归零。仅查看或拖动不会写文件。保存为新文件可直接选择新路径；覆盖已有文件仍需启动时指定 `--overwrite`。
+
 连接真实主臂检查完整映射：
 
 ```bash
@@ -92,6 +111,10 @@ python scripts/inspect_leader.py \
 
 ## 2. 启动采集
 
+本机 ip 设置为 `192.168.1.100`，机械臂默认 ip 为 `192.168.1.18`
+
+可在浏览器打开 `192.168.1.18` 进入机器人管理器后台 ( 用户名：user 密码：123 )
+
 ```bash
 TASK_NAME="test"
 OUTPUT_ROOT="$HOME/datasets"
@@ -105,7 +128,7 @@ python scripts/collect_data_ros2.py \
   --session-id "session_${ID}" \
   --robot-ip 192.168.1.18 \
   --robot-port 8080 \
-  --camera-serial YOUR_SN_1 \
+  --camera-serial "${ARM_CAM_SN_1}" \
   --camera-serial YOUR_SN_2 \
   --camera-serial YOUR_SN_3 \
   --storage-id mcap \

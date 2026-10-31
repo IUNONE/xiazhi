@@ -241,9 +241,9 @@ def main():
     parser.add_argument('--arm', choices=ARMS, help='Robot to edit; defaults to input-file arm or leader')
     parser.add_argument('--pose', choices=POSES, help='Pose purpose; defaults to input-file type or zero')
     initial = parser.add_mutually_exclusive_group()
-    initial.add_argument('--input', type=Path, help='Load saved angles and infer arm/pose unless explicitly specified')
+    initial.add_argument('--input', type=Path, help='Load a saved pose or mapping for inspection; does not require --overwrite')
     initial.add_argument('--joints', type=joint_angles, help='Initial joint angles in degrees, e.g. "[90,90,-90,0,0,90]"')
-    parser.add_argument('--output', type=Path, help='Default save filename; configs/teleoperation/<arm>.<pose>.json')
+    parser.add_argument('--output', type=Path, help='Save destination; defaults to --input when loading, otherwise a generated filename')
     parser.add_argument('--overwrite', action='store_true', help='Allow replacing an existing pose file when saving')
     parser.add_argument('--robot-xacro', type=Path, default=DEFAULT_ROBOT_XACRO, help='ECO63 xacro used for --arm follower')
     parser.add_argument('--memory-limit', default='25%')
@@ -253,8 +253,10 @@ def main():
     if args.calibrate_leader_follower:
         if args.arm or args.pose or args.joints is not None:
             parser.error('--calibrate_leader_follwer cannot be combined with --arm, --pose, or --joints')
-        output = args.output or Path('configs/teleoperation/leader_follower.mapping.json')
-        if output.exists() and not args.overwrite:
+        output = args.output or args.input or Path('configs/teleoperation/leader_follower.mapping.json')
+        # Loading alone is read-only until Save is clicked. Explicit output
+        # destinations and new sessions retain their startup overwrite guard.
+        if output.exists() and not args.overwrite and (args.output is not None or args.input is None):
             raise FileExistsError(f'{output} already exists. Use --overwrite to replace it.')
         leader_model, model = ArmModel.load('leader'), ArmModel.load('follower', args.robot_xacro)
         purpose = 'mapping'
@@ -266,8 +268,10 @@ def main():
         arm, purpose = args.arm or inferred_arm, args.pose or inferred_pose
         if args.input and (arm, purpose) != (inferred_arm, inferred_pose):
             parser.error('The requested --arm / --pose does not match the input pose file.')
-        output = args.output or Path('configs/teleoperation') / f'{arm}.{purpose}.json'
-        if output.exists() and not args.overwrite:
+        output = args.output or args.input or Path('configs/teleoperation') / f'{arm}.{purpose}.json'
+        # Loading alone is read-only until Save is clicked. Explicit output
+        # destinations and new sessions retain their startup overwrite guard.
+        if output.exists() and not args.overwrite and (args.output is not None or args.input is None):
             raise FileExistsError(f'{output} already exists. Use --overwrite to replace it.')
         model = ArmModel.load(arm, args.robot_xacro)
         angles = (load_pose(args.input, model, purpose) if args.input else
@@ -288,7 +292,9 @@ def main():
                    else ArmPosePreview(model, purpose, args.memory_limit))
         if args.calibrate_leader_follower:
             preview.update_mapping(angles, directions)
-        SliderWindow(root, preview, angles, output, overwrite=args.overwrite, directions=directions)
+        window = SliderWindow(root, preview, angles, output, overwrite=args.overwrite, directions=directions)
+        if args.input:
+            window.status.set(f'Loaded: {args.input}. Changes are saved only when you click Save.')
         root.deiconify()
         root.mainloop()
     except KeyboardInterrupt:
