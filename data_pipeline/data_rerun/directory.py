@@ -215,7 +215,7 @@ def view_directory(root: Path, kind: str, cache_dir: Path, options: dict, memory
             client = server.client()
             for name, paths in datasets.items():
                 blueprint = mcap_blueprint or paths[0].with_suffix('.rbl')
-                client.get_dataset(name).register_blueprint(str(blueprint))
+                client.get_dataset(name).register_blueprint(blueprint.resolve().as_uri())
             print(f"已注册 {len(episodes)} 个 episode。在 Viewer 左侧 Sources 中选择数据集及 episode。", flush=True)
             print(f"缓存: {cache_dir.resolve()}\n本地数据源: {server.url()}", flush=True)
             # Native viewer queries the catalog; do not stream every RRD into its memory.
