@@ -38,9 +38,14 @@ def main() -> None:
             if exported is None:
                 raise RuntimeError('LeRobot visualizer 未返回 RRD')
             import rerun as rr
-            rr.send_recording_name(request['label'])
-            rr.flush()
-            rr.disconnect()
+            recording = rr.get_data_recording()
+            if recording is None:
+                raise RuntimeError('LeRobot visualizer 未创建 Rerun recording')
+            try:
+                recording.send_recording_name(request['label'])
+                recording.flush()
+            finally:
+                recording.disconnect()
             subprocess.run([
                 'rerun', 'rrd', 'route', '--application-id', request['label'],
                 '--recording-id', request['recording_id'], '--output', str(output), str(exported),

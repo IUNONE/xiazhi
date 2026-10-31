@@ -21,7 +21,6 @@ LEADER_PORT="usb-1a86_USB_Serial-if00-port0"
 ```
 
 
-
 ```bash
 # 检查相机序列号
 
@@ -100,9 +99,6 @@ python scripts/inspect_leader.py \
 ```
 
 ## 2. 启动采集
-
-采集启动时会将 `--robot-ip`、`--robot-port` 显式传给 `rm_driver`，并按到机械臂的本机路由选择 UDP 状态回报地址。终端会打印实际使用的 `arm_ip`、`tcp_port`、`udp_ip` 和安装目录中的驱动配置路径，便于核对。网页能打开只说明 Web 服务可达，控制连接还需对应的 TCP 端口可达。
-
 
 本机 ip 设置为 `192.168.1.100`，机械臂默认 ip 为 `192.168.1.18`
 

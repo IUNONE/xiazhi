@@ -27,7 +27,12 @@ class EndEffectorKinematics:
             if joint.getTypeName() != "Fixed":
                 self.names.append(joint.getName())
         self.kdl = PyKDL
-        self.solver = PyKDL.ChainFkSolverPos_recursive(chain)
+        # KDL stores a C++ reference to the chain; PyKDL does not keep it alive.
+        # Keep the owning Python object for the entire lifetime of the solver.
+        self.chain = chain
+        self.base_link = base_link
+        self.tip_link = tip_link
+        self.solver = PyKDL.ChainFkSolverPos_recursive(self.chain)
 
     def position(self, message: Any) -> tuple[float, float, float]:
         if len(message.name) != len(message.position) or len(set(message.name)) != len(message.name):
@@ -43,6 +48,11 @@ class EndEffectorKinematics:
                 raise ValueError(f"Non-finite joint position: {name}")
             q[i] = value
         frame = self.kdl.Frame()
-        if self.solver.JntToCart(q, frame) < 0:
-            raise ValueError("KDL forward kinematics failed")
+        result = self.solver.JntToCart(q, frame)
+        if result < 0:
+            raise ValueError(
+                f"KDL forward kinematics failed: {self.solver.strError(result)} "
+                f"(code={result}, chain={self.base_link}->{self.tip_link}, "
+                f"joints={self.chain.getNrOfJoints()}, positions={len(self.names)})"
+            )
         return tuple(float(frame.p[i]) for i in range(3))

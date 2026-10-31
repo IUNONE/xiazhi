@@ -83,7 +83,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 224.171875
+    "width": 231.12890625
   },
   "right": {
     "id": "354b26a61b15add3",
@@ -191,11 +191,11 @@
   "active": "5e97ae82ff3250ec",
   "lastOpenFiles": [
     "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
+    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
+    "S01 data-pipeline/04-data-collect-rerun-visualization.md",
     "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
     "assets/leader_follower_rerun.webm",
     "assets/leader_follower_rerun_09-30.webm",
-    "S01 data-pipeline/04-data-collect-rerun-visualization.md",
-    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
     "assets/leader_follower_offset.png",
     "assets/zero.png",
     "assets/1.webm",
