@@ -400,7 +400,7 @@ class Rosbag2Collector:
                     self._start(self._camera_command(camera))
                 self._wait_for_topics()
                 self._check_fresh_samples()
-                self._arm.connect()
+                self._arm.connect(enable_drag_services=self.config.teaching_mode == "drag")
                 if self.config.teaching_mode == "leader-follower":
                     self._arm.prepare_teleoperation()
                 if self.config.robot.init_joints_deg is not None and self.config.teaching_mode != "leader-follower":

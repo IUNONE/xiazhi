@@ -113,8 +113,8 @@ class RealManRosArm:
         if context is not None and context.ok():
             context.shutdown()
 
-    def connect(self) -> None:
-        """连接 ROS driver services 并设置 session 初始关节位置。"""
+    def connect(self, *, enable_drag_services: bool = True) -> None:
+        """Connect joint topics; drag services are optional for teleoperation."""
         if self.is_connected:
             raise RuntimeError("RealMan ROS 控制节点已连接")
         try:
@@ -123,17 +123,11 @@ class RealManRosArm:
             from rclpy.executors import MultiThreadedExecutor
             from rclpy.node import Node
             from rm_ros_interfaces.msg import Movej
-            from rm_ros_interfaces.srv import (
-                CommandResult,
-                SaveDragTrajectory,
-                SetForceDragMode,
-                StartMultiDragTeach,
-            )
             from sensor_msgs.msg import JointState
             from std_msgs.msg import Bool
         except ImportError as exc:
             raise ImportError(
-                "缺少 ROS driver 单连接控制接口，请重新编译 rm_ros_interfaces 和 rm_driver"
+                "缺少 ROS 关节控制消息接口，请确认已加载工作区 install/setup 环境"
             ) from exc
 
         try:
@@ -145,42 +139,51 @@ class RealManRosArm:
             self._context = context
             self._node = node
             self._executor = executor
-            self._service_types = {
-                "command": CommandResult,
-                "save": SaveDragTrajectory,
-                "set_force": SetForceDragMode,
-                "start_drag": StartMultiDragTeach,
-            }
-            self._clients = {
-                "set_force": node.create_client(
-                    SetForceDragMode,
-                    "/rm_driver/set_force_drag_mode",
-                ),
-                "start_drag": node.create_client(
-                    StartMultiDragTeach,
-                    "/rm_driver/start_multi_drag_teach",
-                ),
-                "stop_drag": node.create_client(
-                    CommandResult,
-                    "/rm_driver/stop_drag_teach",
-                ),
-                "save": node.create_client(
-                    SaveDragTrajectory,
-                    "/rm_driver/save_drag_trajectory",
-                ),
-                "origin": node.create_client(
-                    CommandResult,
-                    "/rm_driver/drag_trajectory_origin",
-                ),
-                "run": node.create_client(
-                    CommandResult,
-                    "/rm_driver/run_drag_trajectory",
-                ),
-                "stop_replay": node.create_client(
-                    CommandResult,
-                    "/rm_driver/stop_drag_trajectory",
-                ),
-            }
+            self._service_types = {}
+            self._clients = {}
+            if enable_drag_services:
+                try:
+                    from rm_ros_interfaces.srv import (
+                        CommandResult, SaveDragTrajectory, SetForceDragMode, StartMultiDragTeach,
+                    )
+                except ImportError as exc:
+                    raise ImportError('拖动示教需要扩展 ROS service 接口，请重新编译 rm_ros_interfaces 和 rm_driver') from exc
+                self._service_types = {
+                    "command": CommandResult,
+                    "save": SaveDragTrajectory,
+                    "set_force": SetForceDragMode,
+                    "start_drag": StartMultiDragTeach,
+                }
+                self._clients = {
+                    "set_force": node.create_client(
+                        SetForceDragMode,
+                        "/rm_driver/set_force_drag_mode",
+                    ),
+                    "start_drag": node.create_client(
+                        StartMultiDragTeach,
+                        "/rm_driver/start_multi_drag_teach",
+                    ),
+                    "stop_drag": node.create_client(
+                        CommandResult,
+                        "/rm_driver/stop_drag_teach",
+                    ),
+                    "save": node.create_client(
+                        SaveDragTrajectory,
+                        "/rm_driver/save_drag_trajectory",
+                    ),
+                    "origin": node.create_client(
+                        CommandResult,
+                        "/rm_driver/drag_trajectory_origin",
+                    ),
+                    "run": node.create_client(
+                        CommandResult,
+                        "/rm_driver/run_drag_trajectory",
+                    ),
+                    "stop_replay": node.create_client(
+                        CommandResult,
+                        "/rm_driver/stop_drag_trajectory",
+                    ),
+                }
             self._subscriptions = [
                 node.create_subscription(
                     JointState,
