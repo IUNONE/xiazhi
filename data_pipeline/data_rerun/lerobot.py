@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from data_pipeline.data_rerun.robot_model import DEFAULT_ROBOT_XACRO
+
 
 @dataclass(frozen=True, slots=True)
 class LeRobotRerunConfig:
@@ -30,6 +32,8 @@ class LeRobotRerunConfig:
     batch_size: int = 32
     num_workers: int = 0
     blueprint_path: Path | None = None
+    robot_xacro: Path | None = DEFAULT_ROBOT_XACRO
+    eef_link: str = "Link6"
 
 
 class LeRobotRerunVisualizer:
@@ -82,11 +86,16 @@ class LeRobotRerunVisualizer:
             episodes=[self.config.episode_index],
             root=self.config.root,
         )
+        from lerobot.scripts.lerobot_dataset_viz import build_blueprint_from_dataset
+        if self.config.robot_xacro is not None:
+            from data_pipeline.data_rerun.lerobot_scene import build_blueprint
+            blueprint = build_blueprint(dataset)
+        else:
+            blueprint = build_blueprint_from_dataset(dataset)
         if self.config.blueprint_path is not None:
-            from lerobot.scripts.lerobot_dataset_viz import build_blueprint_from_dataset
             if self.config.blueprint_path.exists():
                 raise FileExistsError(self.config.blueprint_path)
-            build_blueprint_from_dataset(dataset).save(
+            blueprint.save(
                 f"{self.config.repo_id}/episode_{self.config.episode_index}",
                 self.config.blueprint_path,
             )
@@ -100,4 +109,13 @@ class LeRobotRerunVisualizer:
             output_dir=self.config.output_dir,
             display_mode="rerun",
         )
+        if self.config.robot_xacro is not None:
+            import rerun as rr
+            from data_pipeline.data_rerun.lerobot_scene import log_scene
+            recording = rr.get_data_recording()
+            if recording is None:
+                raise RuntimeError("LeRobot visualizer 未创建 Rerun recording")
+            recording.send_blueprint(blueprint)
+            log_scene(dataset, recording, self.config.robot_xacro, self.config.eef_link,
+                      self.config.episode_index)
         return Path(result) if result is not None else None

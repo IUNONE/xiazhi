@@ -70,7 +70,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-robot-model",
         action="store_true",
-        help="MCAP 可视化时不加载仓库中的 ECO63 六维力模型",
+        help="不加载 ECO63 模型和末端相机视锥（MCAP / LeRobot 均生效）",
     )
     args = parser.parse_args()
     directory_mode = args.mcap_datasets_dir is not None or args.lerobot_datasets_dir is not None
@@ -175,6 +175,8 @@ def _visualize_lerobot(
             output_dir=output_rrd,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            robot_xacro=None if args.no_robot_model else _DEFAULT_ROBOT_XACRO,
+            eef_link=args.eef_link,
         )
     ).visualize()
     if result is not None:
@@ -188,7 +190,7 @@ def main() -> None:
         kind = "mcap" if args.mcap_datasets_dir is not None else "lerobot"
         root = args.mcap_datasets_dir if kind == "mcap" else args.lerobot_datasets_dir
         view_directory(root, kind, args.cache_dir, {
-            "robot_xacro": str(_DEFAULT_ROBOT_XACRO) if kind == "mcap" and not args.no_robot_model else None,
+            "robot_xacro": str(_DEFAULT_ROBOT_XACRO) if not args.no_robot_model else None,
             "camera_names": args.camera_name,
             "instruction": args.instruction,
             "eef_link": args.eef_link,

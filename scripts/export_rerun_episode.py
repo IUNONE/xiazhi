@@ -34,6 +34,8 @@ def main() -> None:
                 root=Path(request['path']), save=True, output_dir=Path(temp),
                 batch_size=options['batch_size'], num_workers=options['num_workers'],
                 blueprint_path=output.with_suffix('.rbl'),
+                robot_xacro=Path(options['robot_xacro']) if options.get('robot_xacro') else None,
+                eef_link=options.get('eef_link', 'Link6'),
             )).visualize()
             if exported is None:
                 raise RuntimeError('LeRobot visualizer 未返回 RRD')

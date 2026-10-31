@@ -164,22 +164,8 @@ class McapRerunVisualizer:
         Any
             Rerun Blueprint 实例.
         """
-        scene_view = rrb.Spatial3DView(
-            name="ECO63 Robot",
-            origin="/",
-            contents=["/robot_model/**", "/tf", "/tf_static"],
-            background=[18, 22, 30],
-            spatial_information=rrb.SpatialInformation(
-                target_frame="base_root",
-                show_axes=True,
-                show_bounding_box=False,
-            ),
-            eye_controls=rrb.EyeControls3D(
-                position=(1.4, -1.4, 1.2),
-                look_target=(0.0, 0.0, 0.45),
-                eye_up=(0.0, 0.0, 1.0),
-            ),
-        )
+        from data_pipeline.data_rerun.camera import robot_view
+        scene_view = robot_view(rrb, ["/camera_01/color/image_raw"])
         signal_views = [
             rrb.TimeSeriesView(
                 name=name, origin=origin, contents=contents,
@@ -237,6 +223,12 @@ class McapRerunVisualizer:
     def _build_robot_urdf(self) -> bytes | None:
         from data_pipeline.data_rerun.robot_model import build_robot_urdf
         return build_robot_urdf(self.robot_xacro, self.link6_type)
+
+    def _log_wrist_camera(self, recording: Any, rr: Any) -> None:
+        from data_pipeline.data_rerun.camera import log_wrist_camera, read_mcap_intrinsics
+        intrinsics = read_mcap_intrinsics(self.paths)
+        if intrinsics is not None:
+            log_wrist_camera(recording, rr, "/camera_01/color/image_raw", intrinsics, self.eef_link)
 
     @staticmethod
     def _find_available_viewer_port() -> int:
@@ -333,6 +325,7 @@ class McapRerunVisualizer:
         for path in self.paths:
             recording.log_file_from_path(path)
         if robot_urdf is not None:
+            self._log_wrist_camera(recording, rr)
             self._log_eef_delta(recording, rr, robot_urdf)
         else:
             print("未加载 URDF，无法计算 EEF_delta_xyz")
@@ -341,11 +334,6 @@ class McapRerunVisualizer:
         print(f"已发送 {len(self.paths)} 个 MCAP 文件到 Rerun Viewer")
         if self.camera_names:
             print(f"相机视图: {', '.join(self.camera_names)}")
-        if robot_urdf is not None and self.camera_names:
-            print(
-                "提示: 相机视锥只有在 MCAP 含相机坐标系到机械臂坐标系的外参时, "
-                "才会出现在机械臂三维坐标系中"
-            )
         try:
             print("Viewer 正在流式加载数据. 关闭窗口后脚本会自动结束")
             self._wait_for_viewer_to_close(viewer_port)
@@ -380,6 +368,7 @@ class McapRerunVisualizer:
             for path in self.paths:
                 recording.log_file_from_path(path)
             if robot_urdf is not None:
+                self._log_wrist_camera(recording, rr)
                 self._log_eef_delta(recording, rr, robot_urdf)
             recording.flush()
         finally:
