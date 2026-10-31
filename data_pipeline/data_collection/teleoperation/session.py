@@ -50,17 +50,33 @@ def collect_ros_session(collector, path, manifest, keys):
     leader = ZhonglingLeader(config.leader, calibration)
     sink = _CommandSink(collector._arm)
     controller = journal = recorder = episode = None
+    preview = None
     failure = None
     reason = 'q'
     ready = False
     index = 0
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='episode-io')
 
+    def refresh_preview(sample=None):
+        if preview is None or not preview.visible:
+            return
+        if not manual_alignment and controller is None and not ready:
+            target = np.deg2rad(config.robot.init_joints_deg)
+            caption = 'Configured init target. Press i to align; preview closes on i.'
+        else:
+            sample = leader.latest() if sample is None else sample
+            target = calibration.joint_positions(sample.positions)
+            caption = ('Live mapped target before rate limiting. The real follower is STILL FOLLOWING after s.'
+                       if controller is not None else
+                       'Live mapped target. Hold the leader still and press i to align the real follower.')
+        preview.submit(target, caption)
+
     def poll():
         collector._ensure_processes_alive()
-        leader.latest()
+        sample = leader.latest()
         if controller is not None:
             controller.heartbeat()
+        refresh_preview(sample)
         key = keys.read(timeout_s=0.0)
         if key == 'q':
             raise _ExitSession()
@@ -73,8 +89,10 @@ def collect_ros_session(collector, path, manifest, keys):
             while not future.done():
                 if allow_quit:
                     poll()
-                elif controller is not None:
-                    controller.heartbeat()
+                else:
+                    if controller is not None:
+                        controller.heartbeat()
+                    refresh_preview()
                 time.sleep(0.03)
             return future.result()
         except BaseException:
@@ -105,15 +123,22 @@ def collect_ros_session(collector, path, manifest, keys):
 
     try:
         leader.connect()
+        if config.viewer:
+            from data_pipeline.data_rerun.collection_preview import CollectionTargetPreview
+            preview = CollectionTargetPreview(calibration.document['urdf_mapping']['follower_urdf_sha256'])
+            preview.show()
+            refresh_preview()
+            print('从臂目标预览正在打开；按 i/r 关闭，按 s 保存后重新打开。预览不代表真实从臂位置。', flush=True)
         if manual_alignment:
             print('未指定 init：请手动将主臂摆到合适位置并扶稳，按 i 让从臂对齐当前主臂。主臂不会自动回位或卸力；对齐后按 r 开始。按 q 退出。', flush=True)
         else:
             print('按 i 让主从分别回到 init；回位完成、扶稳主臂后按 r。按 q 退出。', flush=True)
         while True:
             collector._ensure_processes_alive()
-            leader.latest()
+            sample = leader.latest()
             if controller is not None:
                 controller.heartbeat()
+            refresh_preview(sample)
             if recorder is not None and recorder.poll() is not None:
                 raise RuntimeError(f'rosbag record 提前退出: {recorder.returncode}')
             if journal is not None:
@@ -139,11 +164,15 @@ def collect_ros_session(collector, path, manifest, keys):
                     if target.shape != (6,) or not np.isfinite(target).all() or np.any(target < limits.lower_rad) or np.any(target > limits.upper_rad):
                         print('当前主臂姿态映射后的从臂目标无效或超出限位。未发送运动指令，请调整主臂后再按 i。', flush=True)
                         continue
+                    if preview is not None:
+                        preview.hide()
                     print(f'请扶稳主臂并保持不动。从臂正移动到当前主臂对应位置 {np.rad2deg(target).round(2).tolist()}°；不录包。', flush=True)
                     operation(lambda: collector._arm.move_to_joint_pose(target))
                     ready = True
                     print('从臂已对齐。请继续扶稳主臂，按 r 卸力并开始跟随、录制。', flush=True)
                 else:
+                    if preview is not None:
+                        preview.hide()
                     print('跟随已暂停。主臂回到标定 init，随后从臂独立回位；不录包。', flush=True)
                     leader.move_home(poll=poll)
                     operation(collector._arm.restore_home)
@@ -156,6 +185,8 @@ def collect_ros_session(collector, path, manifest, keys):
                 if not ready and controller is None:
                     print('请先手动摆好主臂并按 i 对齐从臂。' if manual_alignment else '请先按 i 完成主从回位。', flush=True)
                     continue
+                if preview is not None:
+                    preview.hide()
                 episode_path = config.episode_output_path(index)
                 if episode_path.exists():
                     raise FileExistsError(episode_path)
@@ -181,9 +212,15 @@ def collect_ros_session(collector, path, manifest, keys):
                 print(f'episode {index:06d} 录制中；按 s 保存并继续跟随。', flush=True)
             elif key == 's':
                 if episode is None:
+                    if preview is not None:
+                        preview.show()
+                        refresh_preview()
                     print('当前未录制。跟随状态不变；按 i 对齐当前主臂，或 r 开始录制。' if manual_alignment else '当前未录制。跟随状态不变；按 i 回位或 r 开始录制。', flush=True)
                     continue
                 finish_episode('s')
+                if preview is not None:
+                    preview.show()
+                    refresh_preview()
                 print('episode 已保存，主臂仍卸力，主从继续跟随。按 i 暂停跟随并对齐当前主臂，或 r 继续录制。' if manual_alignment else 'episode 已保存，主臂仍卸力，主从继续跟随。按 i 暂停跟随并回位，或 r 继续录制。', flush=True)
     except _ExitSession:
         reason = 'q'
@@ -204,6 +241,8 @@ def collect_ros_session(collector, path, manifest, keys):
         if recorder is not None:
             operations.append(lambda: collector._stop_process(recorder))
         operations.append(leader.disconnect)
+        if preview is not None:
+            operations.append(preview.close)
         for close in operations:
             try:
                 close()

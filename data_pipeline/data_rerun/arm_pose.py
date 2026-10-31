@@ -125,14 +125,15 @@ def save_pose(path, angles, model, purpose, *, overwrite=False):
 
 
 class ArmPosePreview:
-    def __init__(self, model, purpose, memory_limit='25%', companion=None):
+    def __init__(self, model, purpose, memory_limit='25%', companion=None,
+                 server_memory_limit='256MiB', cancel_event=None):
         import rerun as rr
         import rerun.blueprint as rrb
         from rerun.urdf import UrdfTree
 
         if not importlib.metadata.version('rerun-sdk').startswith('0.33.'):
             raise RuntimeError('The arm pose editor requires Rerun SDK 0.33.')
-        version = subprocess.run(['rerun', '--version'], check=True, capture_output=True, text=True).stdout
+        version = subprocess.run(['rerun', '--version'], check=True, capture_output=True, text=True, timeout=5).stdout
         if '0.33.' not in version:
             raise RuntimeError('The Rerun CLI must also be version 0.33.')
         self.model, self.purpose = model, purpose
@@ -189,10 +190,12 @@ class ArmPosePreview:
                 port = sock.getsockname()[1]
             self.viewer = subprocess.Popen([
                 'rerun', '--port', str(port), '--bind', '127.0.0.1',
-                '--memory-limit', memory_limit, '--server-memory-limit', '256MiB',
+                '--memory-limit', memory_limit, '--server-memory-limit', server_memory_limit,
             ], env=_viewer_env())
             deadline = time.monotonic() + 15
             while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise InterruptedError('Preview startup cancelled.')
                 if self.viewer.poll() is not None:
                     raise RuntimeError('The Rerun viewer exited during startup.')
                 try:

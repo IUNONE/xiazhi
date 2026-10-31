@@ -84,6 +84,7 @@ def main() -> None:
     parser.add_argument("--replay-pre-roll-s", type=float, default=1.0)
     parser.add_argument("--replay-post-roll-s", type=float, default=0.5)
     parser.add_argument("--teaching-mode", choices=["drag", "leader-follower"], default="drag")
+    parser.add_argument("--viewer", action="store_true", help="轻量从臂目标预览：i/r 关闭，s 后重开；仅 leader-follower")
     parser.add_argument("--leader-port")
     parser.add_argument("--leader-config", type=Path, help="主臂编码器设备配置")
     parser.add_argument("--leader-model-calibration", type=Path, help="1.1 主臂实物到 URDF 的标定")
@@ -94,6 +95,8 @@ def main() -> None:
     parser.add_argument("--leader-stale-after-s", type=float, default=0.3)
     parser.add_argument("--unlock-leader", action="store_true", help="兼容参数；采集始终在扶稳后按 r 时卸力，连接时不卸力")
     args = parser.parse_args()
+    if args.viewer and args.teaching_mode != "leader-follower":
+        parser.error("--viewer 需要 --teaching-mode leader-follower")
     leader = None
     if args.teaching_mode == "leader-follower":
         if not args.leader_port or any(value is None for value in (args.leader_config, args.leader_model_calibration, args.leader_follower_mapping)):
@@ -134,6 +137,7 @@ def main() -> None:
         robot=robot,
         teaching_mode=args.teaching_mode,
         leader=leader,
+        viewer=args.viewer,
         extra_topics=tuple(args.extra_topic),
         storage_id=args.storage_id,
         startup_timeout_s=args.startup_timeout_s,

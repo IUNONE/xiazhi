@@ -112,8 +112,11 @@ class CollectionConfig:
     replay_post_roll_s: float = 0.5
     teaching_mode: str = "drag"
     leader: LeaderConfig | None = None
+    viewer: bool = False
 
     def validate(self) -> None:
+        if self.viewer and self.teaching_mode != 'leader-follower':
+            raise ValueError('--viewer 目标预览仅支持 leader-follower 模式')
         if self.teaching_mode not in {"drag", "leader-follower"}:
             raise ValueError("teaching_mode 必须为 drag 或 leader-follower")
         if self.teaching_mode == "leader-follower":
