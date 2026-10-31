@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "a1d1a03b0a9dd591",
+        "id": "a660283296ab5bf4",
         "type": "tabs",
         "children": [
           {
-            "id": "5e97ae82ff3250ec",
+            "id": "2b859bca461e1cd5",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -83,7 +83,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 231.12890625
+    "width": 304.4375
   },
   "right": {
     "id": "354b26a61b15add3",
@@ -188,12 +188,17 @@
       "bases:新建数据库": false
     }
   },
-  "active": "5e97ae82ff3250ec",
+  "active": "2b859bca461e1cd5",
   "lastOpenFiles": [
-    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
-    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
     "S01 data-pipeline/04-data-collect-rerun-visualization.md",
     "S01 data-pipeline/03-data-collection-mcap2lerobot.md",
+    "S01 data-pipeline/02-data-collection-leaderfollower-ros2-mcap.md",
+    "assets/tele.webm",
+    "assets/IMG_4868.webm",
+    "README.md",
+    "assets/README.md",
+    "IMG_4868.webm",
+    "S01 data-pipeline/01-data-collect-drag-ros2-mcap.md",
     "assets/leader_follower_rerun.webm",
     "assets/leader_follower_rerun_09-30.webm",
     "assets/leader_follower_offset.png",

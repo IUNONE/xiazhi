@@ -156,5 +156,6 @@ $HOME/datasets/pick/Lab/session_000001/
     └── *.mcap
 ```
 
+![[assets/tele.webm]]
 
 接下来：[转换为 LeRobot](03-data-collection-mcap2lerobot.md) · [Rerun 查看与验收](04-data-collect-rerun-visualization.md)。
